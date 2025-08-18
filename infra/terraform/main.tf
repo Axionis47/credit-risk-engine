@@ -218,6 +218,27 @@ resource "random_password" "jwt_secret" {
   special = true
 }
 
+# Google OAuth secrets
+resource "google_secret_manager_secret" "google_client_id" {
+  secret_id = "google-client-id"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret" "google_client_secret" {
+  secret_id = "google-client-secret"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
 # Service Account for Cloud Run services
 resource "google_service_account" "cloud_run" {
   account_id   = "pp-final-cloud-run"

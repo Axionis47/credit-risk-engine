@@ -93,6 +93,26 @@ resource "google_cloud_run_v2_service" "gateway_api" {
         name  = "REDDIT_SYNC_SERVICE_URL"
         value = "https://reddit-sync-svc-${random_id.suffix.hex}-uc.a.run.app"
       }
+
+      env {
+        name = "GOOGLE_CLIENT_ID"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.google_client_id.secret_id
+            version = "latest"
+          }
+        }
+      }
+
+      env {
+        name = "GOOGLE_CLIENT_SECRET"
+        value_source {
+          secret_key_ref {
+            secret  = google_secret_manager_secret.google_client_secret.secret_id
+            version = "latest"
+          }
+        }
+      }
     }
   }
 
