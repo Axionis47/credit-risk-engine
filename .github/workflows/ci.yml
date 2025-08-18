@@ -142,7 +142,13 @@ jobs:
         terraform_version: '1.6.0'
 
     - name: Configure Docker for Artifact Registry
-      run: gcloud auth configure-docker ${{ env.REGISTRY_URL }}
+      run: |
+        gcloud auth configure-docker ${{ env.REGISTRY_URL }} --quiet
+        echo "Docker authentication configured for ${{ env.REGISTRY_URL }}"
+
+        # Verify authentication and repository access
+        gcloud artifacts repositories describe pp-final --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} || \
+        gcloud artifacts repositories create pp-final --repository-format=docker --location=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }}
     
     - name: Build and push images
       run: |
