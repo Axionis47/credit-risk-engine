@@ -96,3 +96,9 @@ tmp/
 temp/
 *.tmp
 *.temp
+
+# Sample data files (too large for GitHub)
+dev/csv/
+*.csv
+data/
+samples/
