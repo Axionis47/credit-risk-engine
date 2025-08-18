@@ -67,3 +67,8 @@ export interface ApiResponse<T> {
   error?: string
   trace_id?: string
 }
+
+export interface WhoAmIResponse {
+  authenticated: boolean
+  user?: User
+}

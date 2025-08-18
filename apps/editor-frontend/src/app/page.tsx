@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { ScriptEditor } from '@/components/ScriptEditor'
 import { apiClient } from '@/lib/api'
-import { User } from '@/types/api'
+import { User, WhoAmIResponse } from '@/types/api'
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
