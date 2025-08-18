@@ -1,0 +1,225 @@
+version: '3.8'
+
+services:
+  # Databases
+  postgres:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: pp_final
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Backend Services
+  ingest-svc:
+    build:
+      context: ../services/ingest-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=INFO
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../services/ingest-svc:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005", "--reload"]
+
+  embed-svc:
+    build:
+      context: ../services/embed-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+      - REDIS_URL=redis://redis:6379
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LOG_LEVEL=INFO
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../services/embed-svc:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+
+  retrieval-svc:
+    build:
+      context: ../services/retrieval-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+      - REDIS_URL=redis://redis:6379
+      - EMBED_SERVICE_URL=http://embed-svc:8001
+      - LOG_LEVEL=INFO
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      embed-svc:
+        condition: service_started
+    volumes:
+      - ../services/retrieval-svc:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+
+  editor-svc:
+    build:
+      context: ../services/editor-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+      - LOG_LEVEL=INFO
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../services/editor-svc:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]
+
+  reddit-sync-svc:
+    build:
+      context: ../services/reddit-sync-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+      - REDIS_URL=redis://redis:6379
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=IdeaHunter/1.0
+      - LOG_LEVEL=INFO
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../services/reddit-sync-svc:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004", "--reload"]
+
+  gateway-api:
+    build:
+      context: ../apps/gateway-api
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+      - REDIS_URL=redis://redis:6379
+      - INGEST_SERVICE_URL=http://ingest-svc:8005
+      - EMBED_SERVICE_URL=http://embed-svc:8001
+      - RETRIEVAL_SERVICE_URL=http://retrieval-svc:8002
+      - EDITOR_SERVICE_URL=http://editor-svc:8003
+      - REDDIT_SYNC_SERVICE_URL=http://reddit-sync-svc:8004
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - OAUTH_CALLBACK_URL=http://localhost:8000/api/oauth/callback
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
+      - LOG_LEVEL=INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ingest-svc:
+        condition: service_started
+      embed-svc:
+        condition: service_started
+      retrieval-svc:
+        condition: service_started
+      editor-svc:
+        condition: service_started
+      reddit-sync-svc:
+        condition: service_started
+    volumes:
+      - ../apps/gateway-api:/app
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Frontend Applications
+  editor-frontend:
+    build:
+      context: ../apps/editor-frontend
+      dockerfile: ../../infra/docker/Dockerfile.nextjs
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../apps/editor-frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: ["npm", "run", "dev"]
+
+  ideahunter-frontend:
+    build:
+      context: ../apps/ideahunter-frontend
+      dockerfile: ../../infra/docker/Dockerfile.nextjs
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    ports:
+      - "3001:3000"
+    volumes:
+      - ../apps/ideahunter-frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: ["npm", "run", "dev"]
+
+  # Database Migration Runner
+  migrate:
+    build:
+      context: ../services/ingest-svc
+      dockerfile: ../../infra/docker/Dockerfile.python
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/pp_final
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../services/ingest-svc:/app
+    command: ["alembic", "upgrade", "head"]
+    profiles: ["migrate"]
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: pp_final_network

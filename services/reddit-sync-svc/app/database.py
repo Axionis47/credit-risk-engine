@@ -1,0 +1,35 @@
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from app.config import settings
+
+# Create async engine
+engine = create_async_engine(
+    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    echo=settings.debug,
+    pool_pre_ping=True,
+    pool_recycle=300,
+)
+
+# Create async session factory
+AsyncSessionLocal = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
+
+async def get_db():
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+async def init_db():
+    """Initialize database connection"""
+    async with engine.begin() as conn:
+        # Verify ideas table exists
+        result = await conn.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_name = 'ideas'"
+        )
+        if result.fetchone():
+            print("✓ Database initialized for Reddit sync")
+        else:
+            raise RuntimeError("Ideas table not found - run migrations first")
