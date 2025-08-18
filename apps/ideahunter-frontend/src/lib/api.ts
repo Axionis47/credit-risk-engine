@@ -1,4 +1,4 @@
-import { ApiResponse, AuthResponse, DeckResponse, AcceptedIdeasResponse, FeedbackType } from '@/types/api'
+import { ApiResponse, AuthResponse, DeckResponse, AcceptedIdeasResponse, FeedbackType, WhoAmIResponse } from '@/types/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
@@ -45,8 +45,17 @@ class ApiClient {
     return response.json()
   }
 
-  async whoami() {
-    return this.request('/whoami')
+  async whoami(): Promise<WhoAmIResponse> {
+    const response = await fetch(`${API_BASE_URL}/whoami`, {
+      headers: this.getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      return { authenticated: false }
+    }
+
+    const data = await response.json()
+    return { authenticated: true, user: data.user }
   }
 
   async getIdeasDeck(limit: number = 20): Promise<ApiResponse<DeckResponse>> {

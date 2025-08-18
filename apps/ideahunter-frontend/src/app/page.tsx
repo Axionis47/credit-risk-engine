@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { IdeaDeck } from '@/components/IdeaDeck'
 import { apiClient } from '@/lib/api'
-import { User } from '@/types/api'
+import { User, WhoAmIResponse } from '@/types/api'
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
@@ -16,7 +16,7 @@ export default function Home() {
 
   const checkAuth = async () => {
     try {
-      const response = await apiClient.whoami()
+      const response: WhoAmIResponse = await apiClient.whoami()
       if (response.authenticated && response.user) {
         setUser(response.user)
       }

@@ -15,7 +15,7 @@ export default function Home() {
 
   const checkAuth = async () => {
     try {
-      const response = await apiClient.whoami()
+      const response: WhoAmIResponse = await apiClient.whoami()
       if (response.authenticated && response.user) {
         setUser(response.user)
       }

@@ -50,4 +50,9 @@ export interface ApiResponse<T> {
   trace_id?: string
 }
 
+export interface WhoAmIResponse {
+  authenticated: boolean
+  user?: User
+}
+
 export type FeedbackType = 'reject' | 'save' | 'superlike'
