@@ -57,10 +57,6 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: |
-          apps/editor-frontend/package-lock.json
-          apps/ideahunter-frontend/package-lock.json
     
     - name: Install Python dependencies
       run: |
@@ -79,8 +75,8 @@ jobs:
     
     - name: Install Frontend dependencies
       run: |
-        cd apps/editor-frontend && npm ci
-        cd ../ideahunter-frontend && npm ci
+        cd apps/editor-frontend && npm install
+        cd ../ideahunter-frontend && npm install
     
     - name: Run Python tests
       env:
