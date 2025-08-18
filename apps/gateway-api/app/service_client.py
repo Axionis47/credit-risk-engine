@@ -39,7 +39,22 @@ class ServiceClient:
             )
             response.raise_for_status()
             return response.json()
-    
+
+    async def ingest_from_gcs(self, force_override: Optional[str] = None) -> Dict[str, Any]:
+        """Call ingest service GCS endpoint"""
+        data = {}
+        if force_override:
+            data['force_role_override'] = force_override
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.ingest_url}/api/ingest/from-gcs",
+                data=data,
+                timeout=300  # 5 minutes for large CSV processing
+            )
+            response.raise_for_status()
+            return response.json()
+
     async def retrieve_reference(self, draft_body: str) -> Dict[str, Any]:
         """Call retrieval service to find reference script"""
         async with httpx.AsyncClient() as client:

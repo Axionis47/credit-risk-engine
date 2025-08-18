@@ -182,6 +182,26 @@ async def auto_ingest(
         logger.error("Auto ingest failed", error=str(e))
         raise HTTPException(status_code=500, detail=f"Ingest failed: {str(e)}")
 
+@app.post("/api/ingest/from-gcs")
+async def ingest_from_gcs(force_role_override: Optional[str] = Form(None)):
+    """Load and ingest CSV files from Google Cloud Storage"""
+    try:
+        # Call ingest service
+        result = await service_client.ingest_from_gcs(force_role_override)
+
+        # Trigger embedding sync after successful ingest
+        if result.get("success") and result.get("data", {}).get("report", {}).get("successful", 0) > 0:
+            try:
+                await service_client.sync_embeddings()
+            except Exception as e:
+                logger.warning("Embedding sync failed after GCS ingest", error=str(e))
+
+        return result
+
+    except Exception as e:
+        logger.error("GCS ingest failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"GCS ingest failed: {str(e)}")
+
 @app.post("/api/ideas/sync")
 async def sync_ideas(request: RedditSyncRequest = RedditSyncRequest()):
     """Sync ideas from Reddit (admin endpoint)"""

@@ -10,6 +10,7 @@ import uvicorn
 from app.config import settings
 from app.database import get_db, init_db
 from app.ingest_processor import IngestProcessor
+from app.gcs_client import GCSClient
 
 # Configure structured logging
 structlog.configure(
@@ -136,6 +137,67 @@ async def auto_ingest(
         try:
             os.unlink(metrics_temp_path)
             os.unlink(transcripts_temp_path)
+        except:
+            pass
+
+@app.post("/api/ingest/from-gcs")
+async def ingest_from_gcs(
+    force_role_override: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Load and ingest CSV files from Google Cloud Storage
+
+    Args:
+        force_role_override: JSON string with role overrides (optional)
+
+    Returns:
+        Ingest plan and report
+    """
+    logger.info("Starting GCS ingest")
+
+    # Parse force override if provided
+    override_dict = None
+    if force_role_override:
+        try:
+            import json
+            override_dict = json.loads(force_role_override)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid force_role_override JSON")
+
+    # Initialize GCS client
+    gcs_client = GCSClient()
+
+    try:
+        # Download CSV files from GCS
+        metrics_temp_path, transcripts_temp_path = gcs_client.download_csv_files()
+
+        # Process files
+        plan, report = await processor.process_files(
+            metrics_temp_path, transcripts_temp_path, db, override_dict
+        )
+
+        logger.info("GCS ingest completed",
+                   total_processed=report['total_processed'],
+                   successful=report['successful'],
+                   errors_count=len(report['errors']))
+
+        return {
+            "success": True,
+            "data": {
+                "plan": plan,
+                "report": report
+            }
+        }
+
+    except Exception as e:
+        logger.error("GCS ingest failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"GCS ingest failed: {str(e)}")
+
+    finally:
+        # Clean up temporary files
+        try:
+            gcs_client.cleanup_temp_files(metrics_temp_path, transcripts_temp_path)
         except:
             pass
 
