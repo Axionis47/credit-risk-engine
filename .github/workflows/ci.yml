@@ -54,8 +54,8 @@ jobs:
         node-version: '18'
         cache: 'npm'
         cache-dependency-path: |
-          apps/editor-frontend/package-lock.json
-          apps/ideahunter-frontend/package-lock.json
+          apps/editor-frontend/package.json
+          apps/ideahunter-frontend/package.json
     
     - name: Install Python dependencies
       run: |
@@ -98,8 +98,8 @@ jobs:
     
     - name: Run Frontend tests
       run: |
-        cd apps/editor-frontend && npm test -- --passWithNoTests
-        cd ../ideahunter-frontend && npm test -- --passWithNoTests
+        cd apps/editor-frontend && npm test
+        cd ../ideahunter-frontend && npm test
     
     - name: Lint Python code
       run: |

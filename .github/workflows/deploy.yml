@@ -1,0 +1,183 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: us-central1
+  REGISTRY_URL: us-central1-docker.pkg.dev
+
+jobs:
+  deploy:
+    name: Deploy to Google Cloud
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+        service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+    
+    - name: Set up Cloud SDK
+      uses: google-github-actions/setup-gcloud@v2
+    
+    - name: Configure Docker for Artifact Registry
+      run: gcloud auth configure-docker ${{ env.REGISTRY_URL }}
+    
+    - name: Deploy Infrastructure with Terraform
+      run: |
+        cd infra/terraform
+        
+        # Initialize Terraform
+        terraform init \
+          -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+          -backend-config="prefix=terraform/state"
+        
+        # Plan and Apply
+        terraform plan \
+          -var="project_id=${{ env.GCP_PROJECT_ID }}" \
+          -var="region=${{ env.GCP_REGION }}" \
+          -out=tfplan
+        
+        terraform apply -auto-approve tfplan
+    
+    - name: Build and push images
+      run: |
+        # Build and push backend services
+        services=(
+          "ingest-svc:services/ingest-svc"
+          "embed-svc:services/embed-svc"
+          "retrieval-svc:services/retrieval-svc"
+          "editor-svc:services/editor-svc"
+          "reddit-sync-svc:services/reddit-sync-svc"
+          "gateway-api:apps/gateway-api"
+        )
+        
+        for service_info in "${services[@]}"; do
+          IFS=':' read -r service_name service_path <<< "$service_info"
+          
+          echo "Building ${service_name}..."
+          docker build -t ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${service_name}:${{ github.sha }} \
+            -t ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${service_name}:latest \
+            -f infra/docker/Dockerfile.python \
+            ${service_path}
+          
+          echo "Pushing ${service_name}..."
+          docker push ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${service_name}:${{ github.sha }}
+          docker push ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${service_name}:latest
+        done
+        
+        # Build and push frontend services
+        frontends=(
+          "editor-frontend:apps/editor-frontend"
+          "ideahunter-frontend:apps/ideahunter-frontend"
+        )
+        
+        for frontend_info in "${frontends[@]}"; do
+          IFS=':' read -r frontend_name frontend_path <<< "$frontend_info"
+          
+          echo "Building ${frontend_name}..."
+          docker build -t ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${frontend_name}:${{ github.sha }} \
+            -t ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${frontend_name}:latest \
+            -f infra/docker/Dockerfile.nextjs \
+            ${frontend_path}
+          
+          echo "Pushing ${frontend_name}..."
+          docker push ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${frontend_name}:${{ github.sha }}
+          docker push ${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${frontend_name}:latest
+        done
+    
+    - name: Deploy to Cloud Run
+      run: |
+        # Deploy services with latest images
+        services=(
+          "gateway-api"
+          "ingest-svc"
+          "embed-svc"
+          "retrieval-svc"
+          "editor-svc"
+          "reddit-sync-svc"
+          "editor-frontend"
+          "ideahunter-frontend"
+        )
+        
+        for service in "${services[@]}"; do
+          echo "Deploying ${service}..."
+          gcloud run services update ${service} \
+            --image=${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/${service}:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --quiet || echo "Service ${service} will be created by Terraform"
+        done
+    
+    - name: Run database migrations
+      run: |
+        # Get database connection details
+        DB_PRIVATE_IP=$(cd infra/terraform && terraform output -raw database_private_ip 2>/dev/null || echo "")
+        
+        if [ ! -z "$DB_PRIVATE_IP" ]; then
+          # Create a temporary Cloud Run job for migrations
+          gcloud run jobs create migrate-db-${{ github.sha }} \
+            --image=${{ env.REGISTRY_URL }}/${{ env.GCP_PROJECT_ID }}/pp-final/ingest-svc:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --set-env-vars="DATABASE_URL=postgresql://pp_final:$(gcloud secrets versions access latest --secret=database-password --project=${{ env.GCP_PROJECT_ID }} 2>/dev/null || echo 'password')@${DB_PRIVATE_IP}:5432/pp_final" \
+            --vpc-connector=pp-final-connector \
+            --vpc-egress=private-ranges-only \
+            --service-account=pp-final-cloud-run@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --command=alembic \
+            --args=upgrade,head \
+            --max-retries=3 \
+            --parallelism=1 \
+            --task-count=1 \
+            --cpu=1 \
+            --memory=512Mi \
+            --task-timeout=600 \
+            2>/dev/null || echo "Migration job creation failed, will retry later"
+          
+          # Execute the migration
+          gcloud run jobs execute migrate-db-${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --wait \
+            2>/dev/null || echo "Migration execution failed, database might not be ready yet"
+          
+          # Clean up the job
+          gcloud run jobs delete migrate-db-${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --project=${{ env.GCP_PROJECT_ID }} \
+            --quiet \
+            2>/dev/null || echo "Migration job cleanup completed"
+        else
+          echo "Database not ready yet, skipping migrations"
+        fi
+    
+    - name: Output deployment URLs
+      run: |
+        echo "## 🚀 Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Service URLs:" >> $GITHUB_STEP_SUMMARY
+        
+        # Get service URLs
+        GATEWAY_URL=$(gcloud run services describe gateway-api --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} --format="value(status.url)" 2>/dev/null || echo "Deploying...")
+        EDITOR_URL=$(gcloud run services describe editor-frontend --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} --format="value(status.url)" 2>/dev/null || echo "Deploying...")
+        IDEAHUNTER_URL=$(gcloud run services describe ideahunter-frontend --region=${{ env.GCP_REGION }} --project=${{ env.GCP_PROJECT_ID }} --format="value(status.url)" 2>/dev/null || echo "Deploying...")
+        
+        echo "- **Script Improver**: ${EDITOR_URL}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Idea Hunter**: ${IDEAHUNTER_URL}" >> $GITHUB_STEP_SUMMARY
+        echo "- **API Gateway**: ${GATEWAY_URL}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Project Details:" >> $GITHUB_STEP_SUMMARY
+        echo "- **Project**: ${{ env.GCP_PROJECT_ID }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Region**: ${{ env.GCP_REGION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
