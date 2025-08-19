@@ -11,8 +11,8 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     
-    # Redis
-    redis_url: str = "redis://localhost:6379"
+    # Redis - environment-specific
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     
     # AI Configuration
     model_name: str = "claude-3-5-sonnet-20241022"  # Latest Sonnet

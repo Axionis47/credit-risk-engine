@@ -44,11 +44,32 @@ export function getSubredditColor(subreddit: string): string {
     'bg-indigo-100 text-indigo-800',
     'bg-orange-100 text-orange-800',
   ]
-  
+
   let hash = 0
   for (let i = 0; i < subreddit.length; i++) {
     hash = subreddit.charCodeAt(i) + ((hash << 5) - hash)
   }
-  
+
   return colors[Math.abs(hash) % colors.length]
+}
+
+export function sanitizeUrl(url: string): string {
+  try {
+    const parsedUrl = new URL(url)
+
+    // Only allow HTTPS URLs
+    if (parsedUrl.protocol !== 'https:') {
+      return ''
+    }
+
+    // Only allow Reddit domains
+    const allowedDomains = ['reddit.com', 'www.reddit.com']
+    if (!allowedDomains.includes(parsedUrl.hostname)) {
+      return ''
+    }
+
+    return parsedUrl.toString()
+  } catch {
+    return ''
+  }
 }

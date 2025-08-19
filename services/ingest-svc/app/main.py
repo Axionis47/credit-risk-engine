@@ -57,7 +57,7 @@ async def startup_event():
     await init_db()
     logger.info("Ingest service started", port=settings.port)
 
-@app.get("/healthz")
+@app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {

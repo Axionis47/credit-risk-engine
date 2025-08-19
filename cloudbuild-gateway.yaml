@@ -1,0 +1,14 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+  - 'build'
+  - '-t'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/ideahunter-frontend:working-system-v7'
+  - '-f'
+  - 'infra/docker/Dockerfile.nextjs'
+  - 'apps/ideahunter-frontend'
+  - '--no-cache'
+- name: 'gcr.io/cloud-builders/docker'
+  args:
+  - 'push'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/ideahunter-frontend:working-system-v7'

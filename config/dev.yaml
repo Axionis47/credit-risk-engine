@@ -1,0 +1,66 @@
+# Development environment configuration
+environment: "dev"
+
+app:
+  log_level: "DEBUG"
+
+# Development service URLs
+services:
+  ingest_url: "https://ingest-svc-dev-318093749175.us-central1.run.app"
+  embed_url: "https://embed-svc-dev-318093749175.us-central1.run.app"
+  retrieval_url: "https://retrieval-svc-dev-318093749175.us-central1.run.app"
+  editor_url: "https://editor-svc-dev-318093749175.us-central1.run.app"
+  reddit_sync_url: "https://reddit-sync-svc-dev-318093749175.us-central1.run.app"
+  gateway_url: "https://gateway-api-dev-318093749175.us-central1.run.app"
+
+# Development database
+database:
+  name: "script_improver_system_dev"
+  host: "script-improver-system-dev"
+  port: 5432
+  ssl_mode: "require"
+
+# Development vector store
+vector:
+  index_name: "scripts_dev"
+  namespace: "dev"
+
+# Development storage
+storage:
+  gcs_bucket: "script-improver-system-dev-data"
+  artifacts_bucket: "script-improver-system-dev-artifacts"
+
+# Development authentication
+auth:
+  google_client_id_secret: "google-client-id-dev"
+  google_client_secret_secret: "google-client-secret-dev"
+  jwt_secret_secret: "jwt-secret-dev"
+
+# Development external APIs
+external_apis:
+  openai_api_key_secret: "openai-api-key-dev"
+  anthropic_api_key_secret: "anthropic-api-key-dev"
+  reddit_client_id_secret: "reddit-client-id-dev"
+  reddit_client_secret_secret: "reddit-client-secret-dev"
+
+# Development-specific settings
+security:
+  cors_origins: 
+    - "http://localhost:3000"
+    - "http://localhost:3001"
+    - "https://editor-frontend-dev-318093749175.us-central1.run.app"
+    - "https://ideahunter-frontend-dev-318093749175.us-central1.run.app"
+  allowed_hosts:
+    - "localhost"
+    - "*.us-central1.run.app"
+
+# Development feature flags
+features:
+  mock_data_allowed: true
+  debug_mode: true
+  maintenance_mode: false
+
+# Development monitoring
+monitoring:
+  health_check_interval: 10
+  log_sampling_rate: 1.0

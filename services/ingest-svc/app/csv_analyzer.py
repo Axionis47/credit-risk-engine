@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass
 import json
+import numpy as np
 
 @dataclass
 class ColumnMapping:
@@ -27,7 +28,7 @@ class FileAnalysis:
 
 class CSVAnalyzer:
     """Auto-analyzes CSV files to detect roles and column mappings"""
-    
+
     def __init__(self):
         # Heuristics for detecting column roles
         self.metrics_indicators = {
@@ -44,6 +45,26 @@ class CSVAnalyzer:
             'video_id': ['video_id', 'videoid', 'id', 'video'],
             'transcript': ['transcript', 'body', 'text', 'content', 'script']
         }
+
+    def _convert_numpy_types(self, obj):
+        """Convert numpy types to native Python types for JSON serialization"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            # Handle NaN and infinity values
+            if np.isnan(obj) or np.isinf(obj):
+                return None
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif obj is None or (isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj))):
+            return None
+        else:
+            return obj
     
     def analyze_files(self, metrics_file_path: str, transcripts_file_path: str, 
                      force_override: Optional[Dict[str, str]] = None) -> Tuple[FileAnalysis, FileAnalysis, datetime, datetime]:
@@ -112,23 +133,31 @@ class CSVAnalyzer:
     def _analyze_metrics_file(self, df: pd.DataFrame) -> FileAnalysis:
         """Analyze metrics CSV file"""
         columns = self._map_columns(df.columns, self.metrics_indicators)
-        
+
+        # Convert sample rows and handle numpy types
+        sample_rows = df.head(5).to_dict('records')
+        sample_rows = self._convert_numpy_types(sample_rows)
+
         return FileAnalysis(
             role='metrics',
             columns=ColumnMapping(**columns),
-            row_count=len(df),
-            sample_rows=df.head(5).to_dict('records')
+            row_count=int(len(df)),  # Convert to native Python int
+            sample_rows=sample_rows
         )
     
     def _analyze_transcripts_file(self, df: pd.DataFrame) -> FileAnalysis:
         """Analyze transcripts CSV file"""
         columns = self._map_columns(df.columns, self.transcripts_indicators)
-        
+
+        # Convert sample rows and handle numpy types
+        sample_rows = df.head(5).to_dict('records')
+        sample_rows = self._convert_numpy_types(sample_rows)
+
         return FileAnalysis(
             role='transcripts',
             columns=ColumnMapping(**columns),
-            row_count=len(df),
-            sample_rows=df.head(5).to_dict('records')
+            row_count=int(len(df)),  # Convert to native Python int
+            sample_rows=sample_rows
         )
     
     def _map_columns(self, df_columns: List[str], indicators: Dict[str, List[str]]) -> Dict[str, Optional[str]]:

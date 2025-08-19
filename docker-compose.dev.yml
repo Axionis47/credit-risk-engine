@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: script_improver_system_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Gateway API
+  gateway-api:
+    build:
+      context: .
+      dockerfile: apps/gateway-api/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=dev
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/script_improver_system_dev
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - JWT_SECRET=${JWT_SECRET}
+      - INGEST_SERVICE_URL=http://ingest-svc:8001
+      - EMBED_SERVICE_URL=http://embed-svc:8002
+      - RETRIEVAL_SERVICE_URL=http://retrieval-svc:8003
+      - EDITOR_SERVICE_URL=http://editor-svc:8004
+      - REDDIT_SYNC_SERVICE_URL=http://reddit-sync-svc:8005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Editor Service
+  editor-svc:
+    build:
+      context: .
+      dockerfile: services/editor-svc/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - APP_ENV=dev
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Embed Service
+  embed-svc:
+    build:
+      context: .
+      dockerfile: services/embed-svc/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - APP_ENV=dev
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/script_improver_system_dev
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Editor Frontend
+  editor-frontend:
+    build:
+      context: .
+      dockerfile: apps/editor-frontend/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    depends_on:
+      gateway-api:
+        condition: service_healthy
+
+  # IdeaHunter Frontend
+  ideahunter-frontend:
+    build:
+      context: .
+      dockerfile: apps/ideahunter-frontend/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+    depends_on:
+      gateway-api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: pp-final-dev

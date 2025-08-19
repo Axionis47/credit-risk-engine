@@ -1,0 +1,63 @@
+# Production environment configuration
+environment: "prod"
+
+app:
+  log_level: "WARN"
+
+# Production service URLs
+services:
+  ingest_url: "https://ingest-svc-318093749175.us-central1.run.app"
+  embed_url: "https://embed-svc-318093749175.us-central1.run.app"
+  retrieval_url: "https://retrieval-svc-318093749175.us-central1.run.app"
+  editor_url: "https://editor-svc-318093749175.us-central1.run.app"
+  reddit_sync_url: "https://reddit-sync-svc-318093749175.us-central1.run.app"
+  gateway_url: "https://gateway-api-318093749175.us-central1.run.app"
+
+# Production database
+database:
+  name: "script_improver_system_prod"
+  host: "script-improver-system-prod"
+  port: 5432
+  ssl_mode: "require"
+
+# Production vector store
+vector:
+  index_name: "scripts_prod"
+  namespace: "prod"
+
+# Production storage
+storage:
+  gcs_bucket: "script-improver-system-prod-data"
+  artifacts_bucket: "script-improver-system-prod-artifacts"
+
+# Production authentication
+auth:
+  google_client_id_secret: "google-client-id"
+  google_client_secret_secret: "google-client-secret"
+  jwt_secret_secret: "jwt-secret"
+
+# Production external APIs
+external_apis:
+  openai_api_key_secret: "openai-api-key"
+  anthropic_api_key_secret: "anthropic-api-key"
+  reddit_client_id_secret: "reddit-client-id"
+  reddit_client_secret_secret: "reddit-client-secret"
+
+# Production-specific settings
+security:
+  cors_origins: 
+    - "https://editor-frontend-318093749175.us-central1.run.app"
+    - "https://ideahunter-frontend-318093749175.us-central1.run.app"
+  allowed_hosts:
+    - "*.us-central1.run.app"
+
+# Production feature flags - STRICT
+features:
+  mock_data_allowed: false  # NEVER allow mock data in production
+  debug_mode: false
+  maintenance_mode: false
+
+# Production monitoring
+monitoring:
+  health_check_interval: 60
+  log_sampling_rate: 0.01  # Sample 1% of logs for performance

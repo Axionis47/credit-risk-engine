@@ -1,0 +1,68 @@
+# Default configuration - shared across all environments
+# Environment-specific configs override these values
+
+app:
+  name: "script-improver-system"
+  version: "1.0.0"
+  log_level: "INFO"
+  
+# Service URLs (overridden per environment)
+services:
+  ingest_url: ""
+  embed_url: ""
+  retrieval_url: ""
+  editor_url: ""
+  reddit_sync_url: ""
+
+# Database configuration
+database:
+  pool_size: 10
+  pool_timeout: 30
+  statement_timeout: 30000
+  connection_timeout: 10
+
+# Vector store configuration  
+vector:
+  dimensions: 3072
+  similarity_threshold: 0.7
+  max_results: 10
+
+# OpenAI configuration
+openai:
+  model: "text-embedding-3-large"
+  max_tokens: 8192
+  temperature: 0.7
+
+# Anthropic configuration
+anthropic:
+  model: "claude-3-5-sonnet-20241022"
+  max_tokens: 4096
+  temperature: 0.7
+
+# Authentication
+auth:
+  jwt_algorithm: "HS256"
+  jwt_expiration_hours: 24
+  
+# Rate limiting
+rate_limit:
+  requests_per_minute: 60
+  burst_size: 10
+
+# Monitoring
+monitoring:
+  health_check_interval: 30
+  metrics_enabled: true
+  tracing_enabled: true
+
+# Security
+security:
+  cors_origins: []
+  allowed_hosts: []
+  secure_cookies: true
+  
+# Feature flags
+features:
+  mock_data_allowed: false
+  debug_mode: false
+  maintenance_mode: false

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { IdeaCard } from './IdeaCard'
@@ -23,13 +23,15 @@ export function IdeaDeck() {
   const feedbackMutation = useMutation({
     mutationFn: ({ ideaId, feedbackType }: { ideaId: string; feedbackType: FeedbackType }) =>
       apiClient.submitIdeaFeedback(ideaId, feedbackType),
-    onSuccess: () => {
-      // Remove the top card after successful feedback
-      setCurrentIdeas(prev => prev.slice(1))
+    onSuccess: (_, { ideaId }) => {
+      // Remove the specific card after successful feedback (prevent race conditions)
+      setCurrentIdeas(prev => prev.filter(idea => idea.idea_id !== ideaId))
     },
     onError: (error) => {
-      console.error('Feedback submission failed:', error)
-      // Optionally show error toast
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Feedback submission failed')
+      }
+      // TODO: Show proper error toast instead of console.error
     }
   })
 
@@ -40,13 +42,13 @@ export function IdeaDeck() {
     }
   }, [deckData])
 
-  const handleSwipe = (ideaId: string, direction: FeedbackType) => {
+  const handleSwipe = useCallback((ideaId: string, direction: FeedbackType) => {
     feedbackMutation.mutate({ ideaId, feedbackType: direction })
-  }
+  }, [feedbackMutation])
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     refetch()
-  }
+  }, [refetch])
 
   if (isLoading) {
     return (

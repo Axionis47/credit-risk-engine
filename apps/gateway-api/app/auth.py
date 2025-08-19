@@ -1,7 +1,7 @@
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -75,7 +75,7 @@ class AuthService:
                 updated = True
             
             if updated:
-                user.updated_at = datetime.utcnow()
+                user.updated_at = datetime.now(timezone.utc)
                 await db.commit()
                 
             return user
@@ -86,8 +86,8 @@ class AuthService:
             'name': google_user_info['name'],
             'picture': google_user_info.get('picture'),
             'verified_email': google_user_info.get('verified_email', False),
-            'created_at': datetime.utcnow(),
-            'updated_at': datetime.utcnow()
+            'created_at': datetime.now(timezone.utc),
+            'updated_at': datetime.now(timezone.utc)
         }
         
         result = await db.execute(insert(User).values(**user_data).returning(User))
@@ -103,8 +103,8 @@ class AuthService:
             'sub': str(user.id),
             'email': user.email,
             'name': user.name,
-            'exp': datetime.utcnow() + timedelta(hours=self.jwt_expiration_hours),
-            'iat': datetime.utcnow()
+            'exp': datetime.now(timezone.utc) + timedelta(hours=self.jwt_expiration_hours),
+            'iat': datetime.now(timezone.utc)
         }
         
         return jwt.encode(payload, self.jwt_secret, algorithm=self.jwt_algorithm)
@@ -150,24 +150,48 @@ class AuthService:
 auth_service = AuthService()
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncSession = Depends(get_db)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ) -> User:
     """Dependency to get current authenticated user"""
-    token = credentials.credentials
+    token = None
+
+    # Try to get token from httpOnly cookie first
+    if "access_token" in request.cookies:
+        token = request.cookies["access_token"]
+    # Fallback to Authorization header for backward compatibility
+    elif credentials:
+        token = credentials.credentials
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No authentication token provided"
+        )
+
     payload = auth_service.verify_access_token(token)
     return await auth_service.get_current_user(payload, db)
 
 async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
-    db: AsyncSession = Depends(get_db)
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False))
 ) -> Optional[User]:
     """Dependency to get current user if authenticated, None otherwise"""
-    if not credentials:
-        return None
-    
-    try:
+    token = None
+
+    # Try to get token from httpOnly cookie first
+    if "access_token" in request.cookies:
+        token = request.cookies["access_token"]
+    # Fallback to Authorization header for backward compatibility
+    elif credentials:
         token = credentials.credentials
+
+    if not token:
+        return None
+
+    try:
         payload = auth_service.verify_access_token(token)
         return await auth_service.get_current_user(payload, db)
     except HTTPException:

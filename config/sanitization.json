@@ -1,0 +1,28 @@
+{
+  "transcripts": {
+    "field_rules": {
+      "video_id": "video_id",
+      "transcript": "text"
+    }
+  },
+  "metrics": {
+    "field_rules": {
+      "video_id": "video_id",
+      "views": "numeric_noise",
+      "likes": "numeric_noise",
+      "comments": "numeric_noise",
+      "shares": "numeric_noise",
+      "watch_time_seconds": "numeric_noise"
+    },
+    "clamp_categories": {
+      "category": 3
+    }
+  },
+  "users": {
+    "field_rules": {
+      "email": "email",
+      "name": "name",
+      "user_id": "hash"
+    }
+  }
+}

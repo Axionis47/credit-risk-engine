@@ -1,20 +1,37 @@
 import uuid
-from datetime import datetime
-from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Query
+import os
+import sys
+import subprocess
+from datetime import datetime, timezone
+from fastapi import FastAPI, Depends, HTTPException, File, UploadFile, Form, Query, Request, Response, Header
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, insert, and_, or_
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import structlog
 import uvicorn
+import httpx
+# Rate limiting temporarily disabled for deployment
+# from slowapi import Limiter, _rate_limit_exceeded_handler
+# from slowapi.util import get_remote_address
+# from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.database import get_db, init_db
 from app.models import User, Idea, UserFeedback
 from app.auth import auth_service, get_current_user, get_current_user_optional
 from app.service_client import service_client
+
+def verify_csrf_token(request: Request):
+    """Simple CSRF protection - check for X-Requested-With header"""
+    x_requested_with = request.headers.get("X-Requested-With")
+    if not x_requested_with or x_requested_with != "XMLHttpRequest":
+        raise HTTPException(
+            status_code=403,
+            detail="CSRF protection: X-Requested-With header required"
+        )
 
 # Configure structured logging
 structlog.configure(
@@ -37,24 +54,107 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
+# Rate limiter temporarily disabled
+# limiter = Limiter(key_func=get_remote_address)
+
+def run_preflight_checks():
+    """Run preflight checks before starting the service"""
+    logger.info("Running preflight checks...")
+
+    # Check APP_ENV
+    app_env = os.getenv('APP_ENV')
+    if not app_env:
+        logger.error("APP_ENV environment variable is required")
+        sys.exit(1)
+
+    if app_env not in ['dev', 'test', 'prod']:
+        logger.error(f"APP_ENV must be dev, test, or prod, got: {app_env}")
+        sys.exit(1)
+
+    logger.info(f"Environment: {app_env}")
+
+    # Run full preflight check script if available
+    try:
+        result = subprocess.run([
+            sys.executable,
+            '/app/scripts/preflight_check.py'
+        ], capture_output=True, text=True, timeout=30)
+
+        if result.returncode != 0:
+            logger.error(f"Preflight checks failed: {result.stderr}")
+            sys.exit(2)
+
+        logger.info("Preflight checks passed")
+
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        logger.warning("Preflight check script not found or timed out, using basic checks")
+        # Basic environment validation
+        if app_env == 'prod':
+            # In production, be extra strict
+            if 'mock' in str(settings.database_url).lower():
+                logger.error("Production cannot use mock database")
+                sys.exit(2)
+    except Exception as e:
+        logger.error(f"Failed to run preflight checks: {e}")
+        sys.exit(2)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Run preflight checks first
+    run_preflight_checks()
+
+    # Startup
+    await init_db()
+    logger.info("Gateway API started",
+                port=settings.port,
+                allowed_origins=settings.allowed_origins)
+
+    # Log environment info
+    app_env = os.getenv('APP_ENV', 'unknown')
+    logger.info(f"Service running in environment: {app_env}")
+    logger.info(f"Database: {settings.database_url}")
+
+    yield
+    # Shutdown
+    logger.info("Gateway API shutting down")
+
 app = FastAPI(
     title="Gateway API",
     description="Main API gateway for PP Final application",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# CORS middleware
+# Rate limiting temporarily disabled
+# app.state.limiter = limiter
+# app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS middleware with restricted permissions
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
 )
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self'"
+    return response
 
 # Request/Response models
 class GoogleAuthRequest(BaseModel):
-    token: str
+    token: str = Field(..., min_length=1, max_length=2048, description="Google OAuth token")
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -72,9 +172,9 @@ class ImproveRequest(BaseModel):
     style_notes: Optional[str] = None
 
 class IdeaFeedbackRequest(BaseModel):
-    idea_id: str
-    feedback_type: str  # 'reject', 'save', 'superlike'
-    notes: Optional[str] = None
+    idea_id: str = Field(..., min_length=1, max_length=100, description="Idea ID")
+    feedback_type: str = Field(..., pattern="^(reject|save|superlike)$", description="Feedback type")
+    notes: Optional[str] = Field(None, max_length=1000, description="Optional notes")
 
 class RedditSyncRequest(BaseModel):
     subreddits: Optional[List[str]] = None
@@ -82,24 +182,53 @@ class RedditSyncRequest(BaseModel):
     min_score: Optional[int] = None
     max_age_hours: Optional[int] = None
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database connection on startup"""
-    await init_db()
-    logger.info("Gateway API started", 
-                port=settings.port,
-                allowed_origins=settings.allowed_origins)
+
 
 # Public endpoints
-@app.get("/healthz")
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {"message": "Gateway API is running", "status": "healthy"}
+
+@app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Basic health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "gateway-api",
         "version": "1.0.0"
     }
+
+@app.get("/health/detailed")
+async def detailed_health_check(db: AsyncSession = Depends(get_db)):
+    """Comprehensive health check endpoint with database"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "gateway-api",
+        "version": "1.0.0",
+        "checks": {}
+    }
+
+    # Database connectivity check
+    try:
+        await db.execute(select(1))
+        health_status["checks"]["database"] = "healthy"
+    except Exception as e:
+        health_status["checks"]["database"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "unhealthy"
+
+    # Service dependencies check (basic)
+    health_status["checks"]["services"] = {
+        "ingest_service": settings.ingest_service_url,
+        "embed_service": settings.embed_service_url,
+        "retrieval_service": settings.retrieval_service_url,
+        "editor_service": settings.editor_service_url,
+        "reddit_sync_service": settings.reddit_sync_service_url
+    }
+
+    return health_status
 
 @app.get("/whoami")
 async def whoami(current_user: Optional[User] = Depends(get_current_user_optional)):
@@ -120,22 +249,41 @@ async def whoami(current_user: Optional[User] = Depends(get_current_user_optiona
 
 # Authentication endpoints
 @app.post("/api/oauth/google", response_model=TokenResponse)
-async def google_oauth(request: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+async def google_oauth(google_request: GoogleAuthRequest, response: Response, db: AsyncSession = Depends(get_db)):
     """Authenticate with Google OAuth token"""
     try:
         # Verify Google token
-        google_user_info = await auth_service.verify_google_token(request.token)
+        google_user_info = await auth_service.verify_google_token(google_request.token)
         
         # Get or create user
         user = await auth_service.get_or_create_user(google_user_info, db)
         
         # Create access token
         access_token = auth_service.create_access_token(user)
-        
-        logger.info("User authenticated", email=user.email, user_id=str(user.id))
-        
+
+        # Set httpOnly cookie for secure token storage
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,  # HTTPS only
+            samesite="strict",
+            max_age=settings.jwt_expiration_hours * 3600
+        )
+
+        # Log authentication without PII in production
+        app_env = os.getenv('APP_ENV', 'dev')
+        if app_env == 'dev':
+            logger.info("User authenticated", email=user.email, user_id=str(user.id))
+        else:
+            logger.info("User authenticated", user_id_hash=hash(str(user.id)))
+
+        # Only return token in response body for development
+        app_env = os.getenv('APP_ENV', 'dev')
+        response_token = access_token if app_env == 'dev' else "***"  # Hide in production
+
         return TokenResponse(
-            access_token=access_token,
+            access_token=response_token,  # Hidden in production for security
             token_type="Bearer",
             expires_in=settings.jwt_expiration_hours * 3600,
             user={
@@ -151,12 +299,58 @@ async def google_oauth(request: GoogleAuthRequest, db: AsyncSession = Depends(ge
         logger.error("Authentication failed", error=str(e))
         raise HTTPException(status_code=401, detail="Authentication failed")
 
-# Admin endpoints (should be protected in production)
+@app.post("/api/logout")
+async def logout(request: Request, response: Response):
+    """Logout user by clearing authentication cookie"""
+    verify_csrf_token(request)
+    try:
+        # Clear the httpOnly cookie
+        response.delete_cookie(
+            key="access_token",
+            httponly=True,
+            secure=True,
+            samesite="strict"
+        )
+
+        logger.info("User logged out successfully")
+
+        return {"success": True, "message": "Logged out successfully"}
+
+    except Exception as e:
+        logger.error("Logout failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Logout failed")
+
+# Debug endpoint (public, for testing only)
+@app.post("/api/debug/ingest/from-gcs")
+async def debug_ingest_from_gcs():
+    """Debug endpoint to test GCS ingest without authentication"""
+    try:
+        # Call ingest service directly
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.ingest_service_url}/api/ingest/from-gcs",
+                timeout=300.0
+            )
+
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Ingest service error: {response.text}"
+            )
+
+    except Exception as e:
+        logger.error("Debug GCS ingest failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Debug GCS ingest failed: {str(e)}")
+
+# Admin endpoints (protected)
 @app.post("/api/ingest/auto")
 async def auto_ingest(
     metrics_file: UploadFile = File(...),
     transcripts_file: UploadFile = File(...),
-    force_role_override: Optional[str] = Form(None)
+    force_role_override: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
 ):
     """Auto-analyze and ingest CSV files"""
     try:
@@ -183,7 +377,10 @@ async def auto_ingest(
         raise HTTPException(status_code=500, detail=f"Ingest failed: {str(e)}")
 
 @app.post("/api/ingest/from-gcs")
-async def ingest_from_gcs(force_role_override: Optional[str] = Form(None)):
+async def ingest_from_gcs(
+    force_role_override: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user)
+):
     """Load and ingest CSV files from Google Cloud Storage"""
     try:
         # Call ingest service
@@ -203,7 +400,10 @@ async def ingest_from_gcs(force_role_override: Optional[str] = Form(None)):
         raise HTTPException(status_code=500, detail=f"GCS ingest failed: {str(e)}")
 
 @app.post("/api/ideas/sync")
-async def sync_ideas(request: RedditSyncRequest = RedditSyncRequest()):
+async def sync_ideas(
+    request: RedditSyncRequest = RedditSyncRequest(),
+    current_user: User = Depends(get_current_user)
+):
     """Sync ideas from Reddit (admin endpoint)"""
     try:
         result = await service_client.sync_reddit_ideas(
@@ -222,12 +422,12 @@ async def sync_ideas(request: RedditSyncRequest = RedditSyncRequest()):
 # Script Improver endpoints (authenticated)
 @app.post("/api/retrieve")
 async def retrieve_reference(
-    request: RetrieveRequest,
+    retrieve_request: RetrieveRequest,
     current_user: User = Depends(get_current_user)
 ):
     """Retrieve reference script for draft"""
     try:
-        result = await service_client.retrieve_reference(request.draft_body)
+        result = await service_client.retrieve_reference(retrieve_request.draft_body)
         
         # Add trace ID
         result["trace_id"] = str(uuid.uuid4())
@@ -343,7 +543,7 @@ async def submit_idea_feedback(
             # Update existing feedback
             existing_feedback.feedback_type = request.feedback_type
             existing_feedback.notes = request.notes
-            existing_feedback.created_at = datetime.utcnow()
+            existing_feedback.created_at = datetime.now(timezone.utc)
         else:
             # Create new feedback
             feedback_data = {
@@ -351,7 +551,7 @@ async def submit_idea_feedback(
                 'idea_id': idea.id,
                 'feedback_type': request.feedback_type,
                 'notes': request.notes,
-                'created_at': datetime.utcnow()
+                'created_at': datetime.now(timezone.utc)
             }
             await db.execute(insert(UserFeedback).values(**feedback_data))
         

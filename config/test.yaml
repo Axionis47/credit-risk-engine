@@ -1,0 +1,63 @@
+# Test/Staging environment configuration
+environment: "test"
+
+app:
+  log_level: "INFO"
+
+# Test service URLs
+services:
+  ingest_url: "https://ingest-svc-test-318093749175.us-central1.run.app"
+  embed_url: "https://embed-svc-test-318093749175.us-central1.run.app"
+  retrieval_url: "https://retrieval-svc-test-318093749175.us-central1.run.app"
+  editor_url: "https://editor-svc-test-318093749175.us-central1.run.app"
+  reddit_sync_url: "https://reddit-sync-svc-test-318093749175.us-central1.run.app"
+  gateway_url: "https://gateway-api-test-318093749175.us-central1.run.app"
+
+# Test database
+database:
+  name: "script_improver_system_test"
+  host: "script-improver-system-test"
+  port: 5432
+  ssl_mode: "require"
+
+# Test vector store
+vector:
+  index_name: "scripts_test"
+  namespace: "test"
+
+# Test storage
+storage:
+  gcs_bucket: "script-improver-system-test-data"
+  artifacts_bucket: "script-improver-system-test-artifacts"
+
+# Test authentication
+auth:
+  google_client_id_secret: "google-client-id-test"
+  google_client_secret_secret: "google-client-secret-test"
+  jwt_secret_secret: "jwt-secret-test"
+
+# Test external APIs
+external_apis:
+  openai_api_key_secret: "openai-api-key-test"
+  anthropic_api_key_secret: "anthropic-api-key-test"
+  reddit_client_id_secret: "reddit-client-id-test"
+  reddit_client_secret_secret: "reddit-client-secret-test"
+
+# Test-specific settings
+security:
+  cors_origins: 
+    - "https://editor-frontend-test-318093749175.us-central1.run.app"
+    - "https://ideahunter-frontend-test-318093749175.us-central1.run.app"
+  allowed_hosts:
+    - "*.us-central1.run.app"
+
+# Test feature flags
+features:
+  mock_data_allowed: true  # Sanitized data only
+  debug_mode: false
+  maintenance_mode: false
+
+# Test monitoring
+monitoring:
+  health_check_interval: 30
+  log_sampling_rate: 0.1

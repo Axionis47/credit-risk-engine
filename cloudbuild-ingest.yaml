@@ -1,0 +1,14 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: 
+  - 'build'
+  - '-t'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/ingest-svc:fixed-v8'
+  - '-f'
+  - 'infra/docker/Dockerfile.python'
+  - 'services/ingest-svc'
+  - '--no-cache'
+- name: 'gcr.io/cloud-builders/docker'
+  args: 
+  - 'push'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/ingest-svc:fixed-v8'

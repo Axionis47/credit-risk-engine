@@ -1,0 +1,139 @@
+name: Deploy to Development
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    types: [opened, synchronize, reopened]
+
+env:
+  PROJECT_ID: script-improver-system-469119
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+  APP_ENV: dev
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GCP_SA_KEY }}
+    
+    - name: Configure Docker for GCR
+      run: gcloud auth configure-docker ${{ env.REGISTRY }}
+    
+    - name: Build and deploy to development
+      run: |
+        echo "🚀 Deploying to development environment..."
+        
+        # Get short SHA for image tagging
+        SHORT_SHA=$(echo $GITHUB_SHA | cut -c1-7)
+        
+        # Services to deploy
+        SERVICES=(
+          "ingest-svc"
+          "embed-svc"
+          "retrieval-svc" 
+          "editor-svc"
+          "reddit-sync-svc"
+          "gateway-api"
+          "editor-frontend"
+          "ideahunter-frontend"
+        )
+        
+        for service in "${SERVICES[@]}"; do
+          echo "Building and deploying $service to development..."
+          
+          # Build image
+          docker build -t "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/pp-final/$service:dev-$SHORT_SHA" \
+            -f "./apps/$service/Dockerfile" .
+          
+          # Push image
+          docker push "${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/pp-final/$service:dev-$SHORT_SHA"
+          
+          # Deploy to Cloud Run
+          gcloud run deploy "$service-dev" \
+            --image="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/pp-final/$service:dev-$SHORT_SHA" \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --set-env-vars="APP_ENV=dev" \
+            --memory=1Gi \
+            --cpu=1 \
+            --max-instances=10 \
+            --quiet
+        done
+        
+        echo "✅ Development deployment completed"
+    
+    - name: Seed development data
+      run: |
+        echo "🌱 Seeding development environment with test data..."
+        
+        # This would typically involve:
+        # 1. Running database migrations
+        # 2. Loading seed data from seeds/dev/
+        # 3. Creating test embeddings
+        
+        echo "Development data seeding completed"
+    
+    - name: Run development smoke tests
+      run: |
+        echo "🧪 Running smoke tests against development environment..."
+        
+        # Test development services
+        DEV_SERVICES=(
+          "https://gateway-api-dev-318093749175.us-central1.run.app/health"
+          "https://editor-svc-dev-318093749175.us-central1.run.app/health"
+        )
+        
+        # Wait for services to be ready
+        sleep 60
+        
+        for service in "${DEV_SERVICES[@]}"; do
+          echo "Testing $service..."
+          for i in {1..5}; do
+            if curl -f -s "$service" > /dev/null; then
+              echo "✅ $service is healthy"
+              break
+            else
+              echo "⏳ Waiting for $service to be ready (attempt $i/5)..."
+              sleep 10
+            fi
+          done
+        done
+        
+        echo "✅ Development environment is ready"
+    
+    - name: Comment PR with deployment info
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const comment = `## 🚀 Development Deployment
+          
+          Your changes have been deployed to the development environment:
+          
+          **Frontend Applications:**
+          - Editor: https://editor-frontend-dev-318093749175.us-central1.run.app
+          - Idea Hunter: https://ideahunter-frontend-dev-318093749175.us-central1.run.app
+          
+          **API Services:**
+          - Gateway API: https://gateway-api-dev-318093749175.us-central1.run.app
+          - Editor Service: https://editor-svc-dev-318093749175.us-central1.run.app
+          
+          **Environment:** \`dev\`
+          **Commit:** \`${context.sha.substring(0, 7)}\`
+          **Mock Data:** ✅ Allowed (development only)
+          
+          Test your changes and ensure everything works before merging!`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

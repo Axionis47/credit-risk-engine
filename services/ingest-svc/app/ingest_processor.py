@@ -3,8 +3,9 @@ from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, asdict
 import json
+import numpy as np
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, insert
+from sqlalchemy import select
 from app.models import Script, PerformanceMetrics
 from app.csv_analyzer import CSVAnalyzer, FileAnalysis
 from app.text_cleaner import TextCleaner
@@ -40,6 +41,26 @@ class IngestProcessor:
         self.analyzer = CSVAnalyzer()
         self.cleaner = TextCleaner(settings.words_per_minute)
         self.validator = VideoIdValidator()
+
+    def _convert_numpy_types(self, obj):
+        """Convert numpy types to native Python types for JSON serialization"""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        elif isinstance(obj, np.floating):
+            # Handle NaN and infinity values
+            if np.isnan(obj) or np.isinf(obj):
+                return None
+            return float(obj)
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {key: self._convert_numpy_types(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._convert_numpy_types(item) for item in obj]
+        elif obj is None or (isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj))):
+            return None
+        else:
+            return obj
     
     async def process_files(self, metrics_file_path: str, transcripts_file_path: str,
                           db: AsyncSession, force_override: Optional[Dict[str, str]] = None) -> Tuple[Dict, Dict]:
@@ -77,7 +98,10 @@ class IngestProcessor:
         end_time = datetime.utcnow()
         report.processing_time_seconds = (end_time - start_time).total_seconds()
         
-        return ingest_plan, asdict(report)
+        # Convert numpy types to native Python types for JSON serialization
+        ingest_plan = self._convert_numpy_types(ingest_plan)
+        report_dict = self._convert_numpy_types(asdict(report))
+        return ingest_plan, report_dict
     
     async def _process_data(self, metrics_file_path: str, transcripts_file_path: str,
                           metrics_analysis: FileAnalysis, transcripts_analysis: FileAnalysis,
@@ -106,14 +130,20 @@ class IngestProcessor:
         # Process intersection
         for video_id in intersection_ids:
             try:
-                await self._process_video(
-                    video_id, metrics_df, transcripts_df,
-                    metrics_analysis, transcripts_analysis,
-                    embed_cutoff, db, report
-                )
-                report.total_processed += 1
+                # Process each video in its own transaction to prevent rollback cascade
+                async with db.begin():
+                    await self._process_video(
+                        video_id, metrics_df, transcripts_df,
+                        metrics_analysis, transcripts_analysis,
+                        embed_cutoff, db, report
+                    )
+                    report.total_processed += 1
             except Exception as e:
-                report.errors.append(f"Error processing {video_id}: {str(e)}")
+                # Log the error but continue processing other videos
+                error_msg = f"Error processing {video_id}: {str(e)}"
+                report.errors.append(error_msg)
+                print(f"⚠️ {error_msg}")  # Also log to console for debugging
+                # Rollback is automatic when exiting the transaction context
         
         await db.commit()
         return report
@@ -171,18 +201,34 @@ class IngestProcessor:
         if not eligible_for_embedding:
             report.buckets['too_fresh'] += 1
         
-        # Insert script
-        script_data = {
-            'video_id': video_id,
-            'version': 0,
-            'source': 'draft',
-            'body': cleaned_body,
-            'duration_seconds': duration_seconds,
-            'created_at': datetime.utcnow(),
-            'updated_at': datetime.utcnow()
-        }
-        
-        await db.execute(insert(Script).values(**script_data))
+        # Check if script already exists for this video_id and version
+        # Note: Using the actual database schema (content instead of body, no source column)
+        existing_script = await db.execute(
+            select(Script).where(
+                Script.video_id == video_id,
+                Script.version == 0
+            )
+        )
+        existing_script = existing_script.scalar_one_or_none()
+
+        if existing_script:
+            # Update existing script
+            existing_script.body = cleaned_body  # This maps to 'content' in the actual DB
+            existing_script.duration_seconds = duration_seconds
+            existing_script.updated_at = datetime.utcnow()
+            db.add(existing_script)
+        else:
+            # Insert new script
+            script_data = {
+                'video_id': video_id,
+                'version': 0,
+                'body': cleaned_body,  # This maps to 'content' in the actual DB
+                'duration_seconds': duration_seconds,
+                'created_at': datetime.utcnow(),
+                'updated_at': datetime.utcnow()
+            }
+            new_script = Script(**script_data)
+            db.add(new_script)
         
         # Insert performance metrics
         metrics_data = {
@@ -192,13 +238,7 @@ class IngestProcessor:
             'updated_at': datetime.utcnow()
         }
         
-        # Add optional metrics
-        if metrics_analysis.columns.ctr and metrics_analysis.columns.ctr in metrics_row:
-            metrics_data['ctr'] = float(metrics_row[metrics_analysis.columns.ctr])
-        
-        if metrics_analysis.columns.avg_view_duration_s and metrics_analysis.columns.avg_view_duration_s in metrics_row:
-            metrics_data['avg_view_duration_s'] = float(metrics_row[metrics_analysis.columns.avg_view_duration_s])
-        
+        # Add optional metrics (only those that exist in the database schema)
         if metrics_analysis.columns.retention_30s and metrics_analysis.columns.retention_30s in metrics_row:
             metrics_data['retention_30s'] = float(metrics_row[metrics_analysis.columns.retention_30s])
         
@@ -208,7 +248,22 @@ class IngestProcessor:
         if asof_date:
             metrics_data['asof_date'] = asof_date
         
-        await db.execute(insert(PerformanceMetrics).values(**metrics_data))
+        # Check if performance metrics already exist for this video_id
+        existing_metrics = await db.execute(
+            select(PerformanceMetrics).where(PerformanceMetrics.video_id == video_id)
+        )
+        existing_metrics = existing_metrics.scalar_one_or_none()
+
+        if existing_metrics:
+            # Update existing metrics
+            for key, value in metrics_data.items():
+                if key not in ['video_id', 'created_at']:  # Don't update these fields
+                    setattr(existing_metrics, key, value)
+            db.add(existing_metrics)
+        else:
+            # Insert new metrics
+            new_metrics = PerformanceMetrics(**metrics_data)
+            db.add(new_metrics)
         
         # Note: Embedding creation will be handled by embed-svc
         if eligible_for_embedding:

@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from app.config import settings
 
 # Create async engine
@@ -27,15 +28,15 @@ async def init_db():
     async with engine.begin() as conn:
         # Verify pgvector extension is available
         result = await conn.execute(
-            "SELECT 1 FROM pg_extension WHERE extname = 'vector'"
+            text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
         )
         if not result.fetchone():
             raise RuntimeError("pgvector extension not found. Please install and enable it.")
         
         # Verify embeddings table exists
         result = await conn.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'embeddings' AND column_name = 'vector'"
+            text("SELECT column_name FROM information_schema.columns "
+                 "WHERE table_name = 'embeddings' AND column_name = 'vector'")
         )
         if result.fetchone():
             print("✓ Database initialized with pgvector support")

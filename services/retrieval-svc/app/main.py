@@ -78,10 +78,21 @@ class RetrieveResponse(BaseModel):
 @app.on_event("startup")
 async def startup_event():
     """Initialize database connection on startup"""
-    await init_db()
-    logger.info("Retrieval service started", 
+    logger.info("Starting retrieval service...",
                 port=settings.port,
-                embed_service_url=settings.embed_service_url)
+                embed_service_url=settings.embed_service_url,
+                database_url=settings.database_url[:50] + "..." if len(settings.database_url) > 50 else settings.database_url)
+
+    # Don't fail startup if database is not available - handle it gracefully
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.warning("Database initialization failed, will retry on first request",
+                      error=str(e),
+                      error_type=type(e).__name__)
+
+    logger.info("Retrieval service started successfully")
 
 @app.get("/healthz")
 async def health_check():

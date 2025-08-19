@@ -1,0 +1,22 @@
+steps:
+  # Build the embed service image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'services/embed-svc/Dockerfile'
+      - '-t'
+      - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/embed-svc:v6'
+      - 'services/embed-svc'
+
+  # Push the image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/embed-svc:v6'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+
+timeout: '1200s'

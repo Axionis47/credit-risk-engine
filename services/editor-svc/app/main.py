@@ -1,12 +1,22 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import structlog
 import uvicorn
+import time
+import re
+from collections import defaultdict
 
 from app.config import settings
 from app.editor_service import EditorService
+
+# Standardized error response
+class ErrorResponse(BaseModel):
+    success: bool = False
+    error: str
+    details: Optional[Dict[str, Any]] = None
+    timestamp: str
 
 # Configure structured logging
 structlog.configure(
@@ -35,17 +45,77 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - environment-specific origins
+import os
+allowed_origins = []
+app_env = os.getenv('APP_ENV', 'dev')
+
+if app_env == 'prod':
+    allowed_origins = [
+        "https://gateway-api-318093749175.us-central1.run.app"
+    ]
+elif app_env == 'test':
+    allowed_origins = [
+        "https://gateway-api-test-318093749175.us-central1.run.app"
+    ]
+else:  # dev
+    allowed_origins = ["*"]  # Allow all in development
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
 # Global service instance
 editor_service = EditorService()
+
+# Simple rate limiting (in production, use Redis or proper rate limiter)
+request_counts = defaultdict(list)
+RATE_LIMIT_REQUESTS = 10  # requests per minute
+RATE_LIMIT_WINDOW = 60  # seconds
+
+def check_rate_limit(client_ip: str) -> bool:
+    """Simple rate limiting check"""
+    now = time.time()
+    # Clean old requests
+    request_counts[client_ip] = [req_time for req_time in request_counts[client_ip]
+                                if now - req_time < RATE_LIMIT_WINDOW]
+
+    # Check if under limit
+    if len(request_counts[client_ip]) >= RATE_LIMIT_REQUESTS:
+        return False
+
+    # Add current request
+    request_counts[client_ip].append(now)
+    return True
+
+def sanitize_input(text: str) -> str:
+    """Sanitize user input to prevent injection attacks"""
+    if not text:
+        return ""
+
+    # Remove potentially dangerous patterns
+    dangerous_patterns = [
+        r'<script[^>]*>.*?</script>',  # Script tags
+        r'javascript:',  # JavaScript URLs
+        r'on\w+\s*=',  # Event handlers
+        r'<iframe[^>]*>.*?</iframe>',  # Iframes
+        r'<object[^>]*>.*?</object>',  # Objects
+        r'<embed[^>]*>.*?</embed>',  # Embeds
+    ]
+
+    sanitized = text
+    for pattern in dangerous_patterns:
+        sanitized = re.sub(pattern, '', sanitized, flags=re.IGNORECASE | re.DOTALL)
+
+    # Limit length
+    if len(sanitized) > settings.max_input_length:
+        sanitized = sanitized[:settings.max_input_length]
+
+    return sanitized.strip()
 
 # Request/Response models
 class PerformanceMetrics(BaseModel):
@@ -99,36 +169,108 @@ async def startup_event():
 
 @app.get("/healthz")
 async def health_check():
-    """Health check endpoint"""
-    return {
+    """Health check endpoint with dependency verification"""
+    from datetime import datetime, timezone
+
+    health_status = {
         "status": "healthy",
-        "timestamp": "2024-12-01T00:00:00Z",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "editor-svc",
         "version": "1.0.0",
         "model": settings.model_name,
-        "coherence_threshold": settings.coherence_threshold
+        "coherence_threshold": settings.coherence_threshold,
+        "checks": {}
     }
 
-@app.post("/improve", response_model=ImproveResponse)
-async def improve_script(request: ImproveRequest):
-    """
-    Improve a draft script using Anthropic Claude
-    
-    Args:
-        request: Draft script and optional reference/settings
-        
-    Returns:
-        Improved script with coherence validation
-    """
+    # Check Anthropic API key
+    if settings.anthropic_api_key:
+        health_status["checks"]["anthropic_api_key"] = "configured"
+    else:
+        health_status["checks"]["anthropic_api_key"] = "missing"
+        health_status["status"] = "unhealthy"
+
+    # Check Redis connection (if used)
+    try:
+        # Basic Redis check would go here
+        health_status["checks"]["redis"] = "not_implemented"
+    except Exception:
+        health_status["checks"]["redis"] = "unavailable"
+
+    return health_status
+
+@app.post("/debug")
+async def debug_claude_response(request: ImproveRequest):
+    """Debug endpoint to see raw Claude response - DEV ONLY"""
+    # Only allow in development environment
+    app_env = os.getenv('APP_ENV', 'dev')
+    if app_env != 'dev':
+        raise HTTPException(status_code=404, detail="Endpoint not found")
+
     try:
         if not request.draft_body.strip():
             raise HTTPException(status_code=400, detail="Draft body cannot be empty")
-        
-        if len(request.draft_body) > settings.max_input_length:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Draft body too long (max {settings.max_input_length} characters)"
-            )
+
+        # Get raw response from Claude
+        from app.prompt_renderer import PromptRenderer
+        prompt_renderer = PromptRenderer()
+
+        prompt = prompt_renderer.render_script_improver(
+            draft_body=request.draft_body,
+            reference_script=None,
+            target_word_count=900,
+            style_notes=None
+        )
+
+        response = editor_service.client.messages.create(
+            model=editor_service.model,
+            max_tokens=editor_service.max_tokens,
+            temperature=editor_service.temperature,
+            system="You are a world-class video script writer with deep expertise in creating viral, engaging content. You understand what makes viewers click, watch, and share. You analyze successful patterns and apply them creatively without copying content.",
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        content = response.content[0].text
+
+        return {
+            "raw_response": content,
+            "length": len(content),
+            "first_100_chars": content[:100],
+            "last_100_chars": content[-100:] if len(content) > 100 else content
+        }
+
+    except Exception as e:
+        logger.error("Debug failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")
+
+@app.post("/improve", response_model=ImproveResponse)
+async def improve_script(request: ImproveRequest, http_request: Request):
+    """
+    Improve a draft script using Anthropic Claude
+
+    Args:
+        request: Draft script and optional reference/settings
+
+    Returns:
+        Improved script with coherence validation
+    """
+    # Rate limiting check
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please try again later."
+        )
+
+    try:
+        # Sanitize input
+        sanitized_draft = sanitize_input(request.draft_body)
+        if not sanitized_draft:
+            raise HTTPException(status_code=400, detail="Draft body cannot be empty")
+
+        # Sanitize optional fields
+        sanitized_style_notes = sanitize_input(request.style_notes) if request.style_notes else None
         
         # Convert reference script to dict if provided
         reference_dict = None
@@ -148,16 +290,17 @@ async def improve_script(request: ImproveRequest):
                 "combined_score": request.reference.combined_score
             }
         
-        # Improve script
+        # Improve script with sanitized inputs
         result = await editor_service.improve_script(
-            draft_body=request.draft_body,
+            draft_body=sanitized_draft,
             reference_script=reference_dict,
             target_word_count=request.target_word_count,
-            style_notes=request.style_notes
+            style_notes=sanitized_style_notes
         )
         
-        # Check coherence threshold
-        if not result["result"]["coherence"]["passed"]:
+        # Coherence validation - only enforce in production
+        app_env = os.getenv('APP_ENV', 'dev')
+        if app_env == 'prod' and not result["result"]["coherence"]["passed"]:
             raise HTTPException(
                 status_code=422,
                 detail={

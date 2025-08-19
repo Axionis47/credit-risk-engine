@@ -1,7 +1,8 @@
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, Index
-from sqlalchemy.dialects.postgresql import UUID, VECTOR
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
+from pgvector.sqlalchemy import Vector
 import uuid
 
 Base = declarative_base()
@@ -42,5 +43,5 @@ class Embedding(Base):
     video_id = Column(String(50), nullable=False, index=True)
     version = Column(Integer, default=0, nullable=False)
     namespace = Column(String(50), nullable=False, default='v1/openai/te3l-3072')
-    vector = Column(VECTOR(3072), nullable=False)
+    vector = Column(Vector(3072), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

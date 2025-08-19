@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install minimal dependencies
+RUN pip install fastapi uvicorn
+
+# Copy test service
+COPY test_service.py .
+
+# Run the service
+CMD ["python", "test_service.py"]

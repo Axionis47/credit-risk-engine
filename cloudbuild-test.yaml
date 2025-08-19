@@ -1,0 +1,14 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: 
+  - 'build'
+  - '-t'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/test-service:v2'
+  - '-f'
+  - 'Dockerfile.test'
+  - '.'
+  - '--no-cache'
+- name: 'gcr.io/cloud-builders/docker'
+  args: 
+  - 'push'
+  - 'us-central1-docker.pkg.dev/script-improver-system-469119/pp-final/test-service:v2'

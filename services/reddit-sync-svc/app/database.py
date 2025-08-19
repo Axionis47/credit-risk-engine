@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from app.config import settings
 
 # Create async engine
@@ -27,7 +28,7 @@ async def init_db():
     async with engine.begin() as conn:
         # Verify ideas table exists
         result = await conn.execute(
-            "SELECT table_name FROM information_schema.tables WHERE table_name = 'ideas'"
+            text("SELECT table_name FROM information_schema.tables WHERE table_name = 'ideas'")
         )
         if result.fetchone():
             print("✓ Database initialized for Reddit sync")

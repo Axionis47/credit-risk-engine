@@ -1,12 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion'
 import { ExternalLink, MessageCircle, TrendingUp, X, Heart, Star } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Idea, FeedbackType } from '@/types/api'
-import { formatScore, formatTimeAgo, truncateText, getSubredditColor } from '@/lib/utils'
+import { formatScore, formatTimeAgo, truncateText, getSubredditColor, sanitizeUrl } from '@/lib/utils'
 
 interface IdeaCardProps {
   idea: Idea
@@ -19,6 +19,15 @@ export function IdeaCard({ idea, onSwipe, isTop = false }: IdeaCardProps) {
   const x = useMotionValue(0)
   const rotate = useTransform(x, [-200, 200], [-25, 25])
   const opacity = useTransform(x, [-200, -150, 0, 150, 200], [0, 1, 1, 1, 0])
+
+  // Cleanup motion values on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      x.destroy()
+      rotate.destroy()
+      opacity.destroy()
+    }
+  }, [x, rotate, opacity])
 
   const handleDragEnd = (event: any, info: PanInfo) => {
     const threshold = 100
@@ -95,10 +104,18 @@ export function IdeaCard({ idea, onSwipe, isTop = false }: IdeaCardProps) {
         <div className="p-4 border-t bg-gray-50">
           <div className="flex items-center justify-between">
             <a
-              href={idea.source_url}
+              href={sanitizeUrl(idea.source_url)}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener noreferrer nofollow"
               className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              onClick={(e) => {
+                // Additional safety check
+                const url = sanitizeUrl(idea.source_url)
+                if (!url || (!url.startsWith('https://reddit.com') && !url.startsWith('https://www.reddit.com'))) {
+                  e.preventDefault()
+                  alert('Invalid or unsafe URL')
+                }
+              }}
             >
               <ExternalLink className="w-4 h-4" />
               View on Reddit
