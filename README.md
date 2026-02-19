@@ -1,6 +1,6 @@
 # Credit Scoring Platform
 
-Production credit risk assessment system with PD/LGD/EAD modeling, real-time scoring API, SHAP explainability, fairness monitoring, and drift detection.
+Production credit risk assessment system with PD/LGD/EAD modeling, real-time scoring API, A/B testing, SHAP explainability, fairness monitoring, and drift detection.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ Production credit risk assessment system with PD/LGD/EAD modeling, real-time sco
      +--------v--+   +-------v-----+  +------v------+
      | Feature    |   | Model       |  | Monitoring  |
      | Engineer   |   | Ensemble    |  | (Drift,     |
-     | (100+      |   | PD/LGD/EAD  |  |  Fairness,  |
+     | (63        |   | PD/LGD/EAD  |  |  Fairness,  |
      |  features) |   | Fraud       |  |  Prometheus)|
      +--------+---+   +-------+-----+  +------+------+
               |               |               |
@@ -35,13 +35,13 @@ Production credit risk assessment system with PD/LGD/EAD modeling, real-time sco
 | PD Logistic | Logistic Regression with StandardScaler | Baseline, interpretable |
 | PD XGBoost | XGBClassifier with Optuna tuning | Primary tree model |
 | PD LightGBM | LGBMClassifier with class imbalance handling | Fast gradient boosting |
-| PD TensorFlow | Wide & Deep neural network with embeddings | Captures nonlinear interactions |
-| PD Ensemble | Weighted average (scipy-optimized weights) | Combined prediction |
+| PD TensorFlow | Wide & Deep neural network | Captures nonlinear interactions |
+| PD Ensemble | Weighted average (Nelder-Mead optimized) | Combined prediction |
 | LGD | Two-stage: LogisticRegression + XGBRegressor | Loss severity on default |
 | EAD | ML-predicted CCF with regulatory fallback | Exposure at default |
 | Fraud | LGBMClassifier with imbalance handling | Fraud detection |
 
-The PD ensemble combines all four base models (LR, XGBoost, LightGBM, TensorFlow) with weights optimized on validation AUC via Nelder-Mead.
+The PD ensemble combines base models with weights optimized on validation AUC via Nelder-Mead. Current weights: XGBoost 95.7%, Logistic 4.3%, LightGBM <0.1%.
 
 ### TensorFlow Wide & Deep
 
@@ -66,18 +66,18 @@ Expected loss: `ECL = PD * LGD * EAD`
 
 ## Data
 
-Two data paths, both produce the same schema:
+Two data paths, both produce the same 23-column borrower schema:
 
-1. **Kaggle datasets**: Lending Club loan data and "Give Me Some Credit" dataset
-2. **Synthetic generation**: Gaussian copula for correlated borrower profiles, transaction and payment history generation
+1. **Kaggle "Give Me Some Credit"**: 150k real borrowers with actual default labels (`SeriousDlqin2yrs`). Subsampled to 30k for training. Transaction and payment histories are synthetically enriched.
+2. **Fully synthetic**: Gaussian copula for correlated borrower profiles with transaction and payment history generation. Falls back to this when Kaggle data is unavailable.
 
-Synthetic data uses a Gaussian copula with an 8x8 correlation matrix across (age, income, credit limit, utilization, DTI, employment length, delinquencies, account age). Default labels come from a latent logistic model with intercept calibration via Brent's method to hit the target default rate.
+Synthetic borrower generation uses a Gaussian copula with an 8x8 correlation matrix across (age, income, credit limit, utilization, DTI, employment length, delinquencies, account age). Default labels come from a latent logistic model with intercept calibration via Brent's method to hit the target default rate.
 
-Transaction generation: Poisson frequency, log-normal amounts scaled by borrower income, 7 merchant categories, fraud burst patterns, pre-default spending increase signals.
+Transaction and payment enrichment uses observable credit features (DTI, utilization, delinquencies) to drive behavioral variation, not the default label, to prevent target leakage.
 
 ## Feature Engineering
 
-100+ features across 7 groups:
+63 features across 8 groups:
 
 | Group | Examples |
 |-------|----------|
@@ -91,6 +91,15 @@ Transaction generation: Poisson frequency, log-normal amounts scaled by borrower
 | Risk Ratios | loan_to_income, balance_to_income, utilization_x_dti |
 
 Categorical encoding: one-hot for low-cardinality (employment_type, home_ownership, loan_purpose, device_type), target encoding for state.
+
+## A/B Testing (Shadow Mode)
+
+The scoring API supports shadow mode for safe model comparison in production:
+
+- **Champion** (ensemble) scores every request and drives the decision
+- **Challenger** (e.g., XGBoost-only) scores the same request silently
+- Results are logged and compared via `/api/v1/shadow/report`
+- Tracks decision agreement rate, PD correlation, latency difference, and promotion readiness
 
 ## Explainability
 
@@ -114,6 +123,11 @@ BiasMonitor tracks these over time and flags degradation.
 - **Performance Tracking**: batch-level AUC/KS monitoring over time
 - **Prometheus Metrics**: request count, latency histogram, model AUC gauge, drift PSI, fairness disparity
 
+Run the drift monitoring demo:
+```bash
+python scripts/drift_demo.py
+```
+
 ## Quickstart
 
 ### Install
@@ -125,8 +139,8 @@ pip install -e ".[dev]"
 ### Generate Data
 
 ```bash
-# Option 1: Download Kaggle datasets (requires kaggle CLI or API key)
-make download-data
+# Option 1: Download Kaggle dataset (requires kaggle CLI credentials)
+python scripts/download_data.py
 
 # Option 2: Generate fully synthetic data
 make generate-data
@@ -138,7 +152,7 @@ make generate-data
 make train
 ```
 
-Runs the full pipeline: data loading, validation, feature engineering, Optuna hyperparameter tuning, model training (LR, XGBoost, LightGBM, TensorFlow), ensemble optimization, LGD/EAD/Fraud training, evaluation, and MLflow logging.
+Runs the full pipeline: data loading, validation, feature engineering, Optuna hyperparameter tuning, model training (LR, XGBoost, LightGBM), ensemble optimization, LGD/EAD/Fraud training, evaluation, and MLflow logging.
 
 Output goes to `models/` (joblib files for tree models, SavedModel directory for TensorFlow).
 
@@ -165,7 +179,7 @@ make lint
 ## Docker
 
 ```bash
-# Start all services (PostgreSQL, Redis, MLflow, API)
+# Start all services (PostgreSQL, Redis, MLflow, Prometheus, API)
 make docker-up
 
 # Stop
@@ -176,6 +190,7 @@ Services:
 - PostgreSQL 16 on port 5432
 - Redis 7 on port 6379
 - MLflow on port 5000
+- Prometheus on port 9090
 - API on port 8000
 
 ## API Reference
@@ -215,17 +230,17 @@ Response:
 ```json
 {
   "application_id": "app-001",
-  "credit_score": 712,
-  "risk_tier": "medium",
-  "probability_of_default": 0.073,
-  "loss_given_default": 0.42,
-  "exposure_at_default": 22500.0,
-  "expected_loss": 691.95,
-  "fraud_score": 0.02,
+  "credit_score": 745,
+  "risk_tier": "low",
+  "probability_of_default": 0.043,
+  "loss_given_default": 0.22,
+  "exposure_at_default": 601.52,
+  "expected_loss": 5.81,
+  "fraud_score": 0.001,
   "fraud_flag": false,
   "decision": "approved",
   "adverse_action_reasons": null,
-  "scored_at": "2024-12-31T12:00:00Z",
+  "scored_at": "2026-02-19T13:01:54Z",
   "model_version": "1.0.0"
 }
 ```
@@ -237,6 +252,14 @@ Score multiple applications in one request. Same request fields as single scorin
 ### POST /api/v1/score/{application_id}/explanation
 
 Get SHAP feature contributions and adverse action reason codes for a scored application.
+
+### GET /api/v1/shadow/report
+
+Get A/B comparison report between champion and challenger models.
+
+### GET /api/v1/shadow/recent
+
+Get recent shadow comparison results with per-request detail.
 
 ### GET /api/v1/health
 
@@ -265,7 +288,7 @@ src/credit_scoring/
   features/        Feature engineering, registry, store
   models/          PD, LGD, EAD, Fraud models, ensemble, training
   explainability/  SHAP, adverse action codes, fairness
-  serving/         FastAPI app, routes, middleware, schemas
+  serving/         FastAPI app, routes, middleware, schemas, shadow mode
   monitoring/      Drift detection, performance tracking, Prometheus
   utils/           Logging, database
 ```
@@ -276,3 +299,14 @@ GitHub Actions workflows:
 
 - **ci.yml**: runs on push/PR to main. Lints with ruff, runs all tests.
 - **train.yml**: weekly scheduled training pipeline. Generates data, trains models, uploads artifacts.
+
+## Results
+
+Trained on 30k borrowers from Kaggle "Give Me Some Credit" dataset (6.5% default rate):
+
+| Model | AUC | KS | Gini |
+|-------|-----|-----|------|
+| XGBoost | 0.8795 | 0.6184 | 0.7590 |
+| Logistic Regression | 0.8642 | 0.5742 | 0.7283 |
+| LightGBM | 0.8356 | 0.5335 | 0.6712 |
+| **Ensemble** | **0.8789** | **0.6115** | **0.7578** |
