@@ -1,0 +1,6 @@
+serving:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  rate_limit_per_minute: 100
+  api_key: "dev-api-key-change-in-production"

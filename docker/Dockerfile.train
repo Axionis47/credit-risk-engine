@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY pyproject.toml .
+COPY src/ src/
+RUN pip install --no-cache-dir .
+
+# Copy configs and scripts
+COPY configs/ configs/
+COPY scripts/ scripts/
+
+# Data and models directories
+RUN mkdir -p data models
+
+CMD ["sh", "-c", "python scripts/download_data.py && python scripts/train.py"]

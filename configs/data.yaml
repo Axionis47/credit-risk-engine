@@ -1,0 +1,8 @@
+data:
+  n_borrowers: 30000
+  default_rate: 0.08
+  fraud_rate: 0.015
+  stress_scenario_fraction: 0.05
+  transaction_months: 24
+  avg_transactions_per_month: 15
+  random_seed: 42
