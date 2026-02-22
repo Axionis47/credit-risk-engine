@@ -70,7 +70,8 @@ class TestScoringEndpoint:
             json=sample_scoring_request,
             headers=auth_headers,
         )
-        # Either succeeds (200) or fails at model layer (500), not at validation (422)
+        # Either succeeds (200), models unavailable (503), or internal error (500)
+        # Should NOT fail at validation (422)
         assert response.status_code != 422
 
     def test_batch_missing_fields_returns_422(self, client, auth_headers):

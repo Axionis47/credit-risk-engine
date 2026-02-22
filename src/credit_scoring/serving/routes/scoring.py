@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from credit_scoring.serving.schemas import (
     BatchScoringRequest,
@@ -22,6 +23,9 @@ router = APIRouter(tags=["scoring"])
 async def score_application(request: ScoringRequest, req: Request):
     """Score a single credit application."""
     start = time.monotonic()
+
+    if req.app.state.scorer is None:
+        return JSONResponse(status_code=503, content={"error": "Models not loaded"})
 
     # Compute features
     features = req.app.state.feature_engineer.compute_single(request.model_dump())
