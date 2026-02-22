@@ -71,10 +71,12 @@ class ModelEvaluator:
     def compute_decile_table(self, y_true: np.ndarray, y_prob: np.ndarray) -> list[dict]:
         """Bin predictions into deciles and compute metrics per bin."""
         df = pd.DataFrame({"y_true": y_true, "y_prob": y_prob})
-        df["decile"] = pd.qcut(df["y_prob"], 10, labels=False, duplicates="drop") + 1
+        n_bins = min(10, len(df))
+        df["decile"] = pd.qcut(df["y_prob"], n_bins, labels=False, duplicates="drop") + 1
+        df["decile"] = df["decile"].fillna(1)
 
         table = []
-        for decile in sorted(df["decile"].unique()):
+        for decile in sorted(df["decile"].dropna().unique()):
             subset = df[df["decile"] == decile]
             table.append(
                 {
