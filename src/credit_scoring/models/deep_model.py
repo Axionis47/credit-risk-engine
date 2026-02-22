@@ -209,7 +209,7 @@ class TensorFlowPDModel(BasePDModel):
     def save(self, path: str | Path):
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        self.model.save(path / "saved_model")
+        self.model.save(path / "saved_model.keras")
         # Save metadata
         import json
 
@@ -230,7 +230,13 @@ class TensorFlowPDModel(BasePDModel):
 
         path = Path(path)
         instance = cls.__new__(cls)
-        instance.model = tf.keras.models.load_model(path / "saved_model")
+        # Support both .keras (new) and legacy SavedModel formats
+        keras_path = path / "saved_model.keras"
+        legacy_path = path / "saved_model"
+        if keras_path.exists():
+            instance.model = tf.keras.models.load_model(keras_path)
+        else:
+            instance.model = tf.keras.models.load_model(legacy_path)
 
         with open(path / "metadata.json") as f:
             meta = json.load(f)
