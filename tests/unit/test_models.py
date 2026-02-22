@@ -258,8 +258,15 @@ class TestCreditScoreCalculator:
         result = calc.score_batch(X_test)
 
         expected_cols = {
-            "pd", "lgd", "ead", "expected_loss", "credit_score",
-            "risk_tier", "fraud_score", "fraud_flag", "decision",
+            "pd",
+            "lgd",
+            "ead",
+            "expected_loss",
+            "credit_score",
+            "risk_tier",
+            "fraud_score",
+            "fraud_flag",
+            "decision",
         }
         assert expected_cols.issubset(set(result.columns))
         assert len(result) == len(X_test)

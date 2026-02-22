@@ -29,6 +29,7 @@ class ModelEvaluator:
 
         # Optimal threshold via Youden's J
         from sklearn.metrics import roc_curve
+
         fpr, tpr, thresholds = roc_curve(y_true, y_prob)
         j_scores = tpr - fpr
         best_idx = np.argmax(j_scores)
@@ -75,15 +76,17 @@ class ModelEvaluator:
         table = []
         for decile in sorted(df["decile"].unique()):
             subset = df[df["decile"] == decile]
-            table.append({
-                "decile": int(decile),
-                "count": len(subset),
-                "default_count": int(subset["y_true"].sum()),
-                "default_rate": float(subset["y_true"].mean()),
-                "avg_predicted_pd": float(subset["y_prob"].mean()),
-                "min_pd": float(subset["y_prob"].min()),
-                "max_pd": float(subset["y_prob"].max()),
-            })
+            table.append(
+                {
+                    "decile": int(decile),
+                    "count": len(subset),
+                    "default_count": int(subset["y_true"].sum()),
+                    "default_rate": float(subset["y_true"].mean()),
+                    "avg_predicted_pd": float(subset["y_prob"].mean()),
+                    "min_pd": float(subset["y_prob"].min()),
+                    "max_pd": float(subset["y_prob"].max()),
+                }
+            )
 
         return table
 
@@ -117,35 +120,41 @@ class ModelEvaluator:
 
         if "pd" in results:
             pd_r = results["pd"]
-            lines.extend([
-                "PD Model Performance:",
-                f"  AUC-ROC:     {pd_r['auc_roc']:.4f}",
-                f"  Gini:        {pd_r['gini']:.4f}",
-                f"  KS Statistic:{pd_r['ks_statistic']:.4f}",
-                f"  Log Loss:    {pd_r['log_loss']:.4f}",
-                f"  Brier Score: {pd_r['brier_score']:.4f}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "PD Model Performance:",
+                    f"  AUC-ROC:     {pd_r['auc_roc']:.4f}",
+                    f"  Gini:        {pd_r['gini']:.4f}",
+                    f"  KS Statistic:{pd_r['ks_statistic']:.4f}",
+                    f"  Log Loss:    {pd_r['log_loss']:.4f}",
+                    f"  Brier Score: {pd_r['brier_score']:.4f}",
+                    "",
+                ]
+            )
 
         if "lgd" in results:
             lgd_r = results["lgd"]
-            lines.extend([
-                "LGD Model Performance:",
-                f"  MAE:  {lgd_r['mae']:.4f}",
-                f"  RMSE: {lgd_r['rmse']:.4f}",
-                f"  R2:   {lgd_r['r2']:.4f}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "LGD Model Performance:",
+                    f"  MAE:  {lgd_r['mae']:.4f}",
+                    f"  RMSE: {lgd_r['rmse']:.4f}",
+                    f"  R2:   {lgd_r['r2']:.4f}",
+                    "",
+                ]
+            )
 
         if "ead" in results:
             ead_r = results["ead"]
-            lines.extend([
-                "EAD Model Performance:",
-                f"  MAE:  {ead_r['mae']:.2f}",
-                f"  RMSE: {ead_r['rmse']:.2f}",
-                f"  MAPE: {ead_r['mape']:.4f}",
-                "",
-            ])
+            lines.extend(
+                [
+                    "EAD Model Performance:",
+                    f"  MAE:  {ead_r['mae']:.2f}",
+                    f"  RMSE: {ead_r['rmse']:.2f}",
+                    f"  MAPE: {ead_r['mape']:.4f}",
+                    "",
+                ]
+            )
 
         lines.append("=" * 60)
         return "\n".join(lines)

@@ -26,7 +26,6 @@ def auth_headers():
 
 
 class TestHealthEndpoint:
-
     def test_health_no_auth(self, client):
         """Health endpoint should not require auth."""
         response = client.get("/api/v1/health")
@@ -37,7 +36,6 @@ class TestHealthEndpoint:
 
 
 class TestAuthMiddleware:
-
     def test_missing_api_key_returns_401(self, client):
         response = client.post("/api/v1/score", json={})
         assert response.status_code == 401
@@ -52,7 +50,6 @@ class TestAuthMiddleware:
 
 
 class TestScoringEndpoint:
-
     def test_missing_fields_returns_422(self, client, auth_headers):
         """Missing required fields should return 422."""
         response = client.post(

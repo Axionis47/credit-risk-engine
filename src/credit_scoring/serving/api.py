@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import time
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI
 
@@ -48,6 +47,7 @@ async def lifespan(app: FastAPI):
     if (models_dir / "tf_pd_model").exists():
         try:
             from credit_scoring.models.deep_model import TensorFlowPDModel
+
             tf_model = TensorFlowPDModel.load(models_dir / "tf_pd_model")
             pd_models["tensorflow"] = tf_model
         except Exception as e:
@@ -60,9 +60,7 @@ async def lifespan(app: FastAPI):
         with open(weights_path) as f:
             saved_weights = json.load(f)
             # Only use weights for models we loaded
-            ensemble.weights = {
-                k: v for k, v in saved_weights.items() if k in pd_models
-            }
+            ensemble.weights = {k: v for k, v in saved_weights.items() if k in pd_models}
             # Normalize
             total = sum(ensemble.weights.values())
             if total > 0:
@@ -87,7 +85,10 @@ async def lifespan(app: FastAPI):
     # Build scorer
     if lgd_model and ead_model and fraud_model:
         app.state.scorer = CreditScoreCalculator(
-            ensemble, lgd_model, ead_model, fraud_model,
+            ensemble,
+            lgd_model,
+            ead_model,
+            fraud_model,
         )
     else:
         app.state.scorer = None
@@ -97,7 +98,7 @@ async def lifespan(app: FastAPI):
 
     # Load trained feature names from any PD model for single-scoring alignment
     for model in pd_models.values():
-        if hasattr(model, 'pipeline') and hasattr(model.pipeline, 'feature_names_in_'):
+        if hasattr(model, "pipeline") and hasattr(model.pipeline, "feature_names_in_"):
             app.state.feature_engineer.trained_feature_names = list(model.pipeline.feature_names_in_)
             break
 
@@ -108,6 +109,7 @@ async def lifespan(app: FastAPI):
     if background_path.exists() and "xgboost" in pd_models:
         try:
             import pandas as pd
+
             from credit_scoring.explainability.adverse_action import AdverseActionGenerator
             from credit_scoring.explainability.shap_explainer import SHAPExplainer
 
@@ -125,7 +127,10 @@ async def lifespan(app: FastAPI):
 
             challenger_ensemble = PDEnsemble({"xgboost": pd_models["xgboost"]})
             challenger_scorer = CreditScoreCalculator(
-                challenger_ensemble, lgd_model, ead_model, fraud_model,
+                challenger_ensemble,
+                lgd_model,
+                ead_model,
+                fraud_model,
             )
             app.state.shadow_router = ShadowModeRouter(
                 champion_scorer=app.state.scorer,
@@ -140,6 +145,7 @@ async def lifespan(app: FastAPI):
     app.state.redis = None
     try:
         import redis
+
         app.state.redis = redis.from_url(settings.redis.url)
         app.state.redis.ping()
     except Exception:

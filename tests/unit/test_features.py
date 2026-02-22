@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from credit_scoring.features.engineering import FeatureEngineer
 
@@ -29,9 +28,7 @@ class TestFeatureEngineer:
     def test_all_numeric(self, feature_matrix):
         """All features should be numeric after encoding."""
         for col in feature_matrix.columns:
-            assert pd.api.types.is_numeric_dtype(feature_matrix[col]), (
-                f"Column {col} is not numeric"
-            )
+            assert pd.api.types.is_numeric_dtype(feature_matrix[col]), f"Column {col} is not numeric"
 
     def test_demographic_features_present(self, feature_matrix):
         """Core demographic features should exist."""
@@ -53,10 +50,7 @@ class TestFeatureEngineer:
 
     def test_velocity_features_non_negative(self, feature_matrix):
         """Velocity counts and amounts should be non-negative (excluding trend features)."""
-        velocity_cols = [
-            c for c in feature_matrix.columns
-            if c.startswith("txn_") and "trend" not in c
-        ]
+        velocity_cols = [c for c in feature_matrix.columns if c.startswith("txn_") and "trend" not in c]
         for col in velocity_cols:
             assert (feature_matrix[col] >= 0).all(), f"{col} has negative values"
 

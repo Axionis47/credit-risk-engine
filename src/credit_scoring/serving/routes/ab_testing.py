@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
@@ -13,6 +11,7 @@ router = APIRouter(tags=["ab-testing"])
 def _sanitize(obj):
     """Convert numpy types to native Python for JSON serialization."""
     import numpy as np
+
     if isinstance(obj, dict):
         return {k: _sanitize(v) for k, v in obj.items()}
     if isinstance(obj, list):

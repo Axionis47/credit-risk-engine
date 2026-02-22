@@ -22,8 +22,11 @@ class EADModel:
     def __init__(self, regulatory_ccf: float = 0.75):
         self.regulatory_ccf = regulatory_ccf
         self.ccf_model = XGBRegressor(
-            max_depth=3, n_estimators=100, learning_rate=0.05,
-            random_state=42, verbosity=0,
+            max_depth=3,
+            n_estimators=100,
+            learning_rate=0.05,
+            random_state=42,
+            verbosity=0,
         )
         self.is_fitted = False
 
@@ -38,9 +41,7 @@ class EADModel:
             self.is_fitted = True
         return self
 
-    def predict(
-        self, X: pd.DataFrame, drawn: np.ndarray, limit: np.ndarray
-    ) -> np.ndarray:
+    def predict(self, X: pd.DataFrame, drawn: np.ndarray, limit: np.ndarray) -> np.ndarray:
         """Predict EAD for each borrower."""
         if self.is_fitted:
             ccf = np.clip(self.ccf_model.predict(X), 0.0, 1.0)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -61,7 +60,11 @@ def train_test_data(feature_matrix, borrowers):
 
     y = borrowers.set_index("borrower_id").loc[feature_matrix.index, "is_default"].values
     X_train, X_test, y_train, y_test = train_test_split(
-        feature_matrix, y, test_size=0.3, stratify=y, random_state=42,
+        feature_matrix,
+        y,
+        test_size=0.3,
+        stratify=y,
+        random_state=42,
     )
     return X_train, X_test, y_train, y_test
 

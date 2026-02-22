@@ -3,7 +3,7 @@ model:
   lgd_model_type: xgboost
   ead_model_type: xgboost
   fraud_model_type: lightgbm
-  deep_model_enabled: true
+  deep_model_enabled: false
   n_optuna_trials: 50
   cv_folds: 5
   min_auc_threshold: 0.70

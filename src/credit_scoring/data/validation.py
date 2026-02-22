@@ -23,22 +23,46 @@ class DataValidator:
     """Validate datasets against schema and distribution expectations."""
 
     BORROWER_REQUIRED_COLUMNS = [
-        "borrower_id", "age", "annual_income", "employment_length_years",
-        "employment_type", "home_ownership", "existing_credit_lines",
-        "total_credit_limit", "current_credit_balance", "credit_utilization_ratio",
-        "number_of_delinquencies", "debt_to_income_ratio", "requested_loan_amount",
-        "loan_purpose", "state", "account_age_months", "profile_completeness_score",
-        "device_type", "is_default",
+        "borrower_id",
+        "age",
+        "annual_income",
+        "employment_length_years",
+        "employment_type",
+        "home_ownership",
+        "existing_credit_lines",
+        "total_credit_limit",
+        "current_credit_balance",
+        "credit_utilization_ratio",
+        "number_of_delinquencies",
+        "debt_to_income_ratio",
+        "requested_loan_amount",
+        "loan_purpose",
+        "state",
+        "account_age_months",
+        "profile_completeness_score",
+        "device_type",
+        "is_default",
     ]
 
     TRANSACTION_REQUIRED_COLUMNS = [
-        "transaction_id", "borrower_id", "timestamp", "amount",
-        "merchant_category", "is_international", "channel", "is_declined",
+        "transaction_id",
+        "borrower_id",
+        "timestamp",
+        "amount",
+        "merchant_category",
+        "is_international",
+        "channel",
+        "is_declined",
     ]
 
     PAYMENT_REQUIRED_COLUMNS = [
-        "borrower_id", "payment_date", "due_date", "amount_due",
-        "amount_paid", "days_past_due", "payment_status",
+        "borrower_id",
+        "payment_date",
+        "due_date",
+        "amount_due",
+        "amount_paid",
+        "days_past_due",
+        "payment_status",
     ]
 
     def __init__(self, max_null_fraction: float = 0.05, min_rows: int = 1000):
@@ -107,9 +131,7 @@ class DataValidator:
 
         return result
 
-    def validate_transactions(
-        self, df: pd.DataFrame, borrower_ids: set[str] | None = None
-    ) -> ValidationResult:
+    def validate_transactions(self, df: pd.DataFrame, borrower_ids: set[str] | None = None) -> ValidationResult:
         result = ValidationResult(passed=True)
 
         missing = set(self.TRANSACTION_REQUIRED_COLUMNS) - set(df.columns)
@@ -129,9 +151,7 @@ class DataValidator:
 
         return result
 
-    def validate_payments(
-        self, df: pd.DataFrame, borrower_ids: set[str] | None = None
-    ) -> ValidationResult:
+    def validate_payments(self, df: pd.DataFrame, borrower_ids: set[str] | None = None) -> ValidationResult:
         result = ValidationResult(passed=True)
 
         missing = set(self.PAYMENT_REQUIRED_COLUMNS) - set(df.columns)
@@ -165,6 +185,7 @@ class DataValidator:
         zero_var = [col for col in numeric_cols if df[col].std() == 0]
         if zero_var:
             import logging
+
             logging.getLogger(__name__).warning("Zero variance columns: %s", zero_var)
         result.add_check(
             "no_zero_variance",

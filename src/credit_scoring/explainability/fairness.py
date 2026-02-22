@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pandas as pd
 
 
 class FairnessMetrics:
@@ -32,9 +31,7 @@ class FairnessMetrics:
             "passed": max_disparity < 0.10,
         }
 
-    def equalized_odds(
-        self, y_true: np.ndarray, y_pred: np.ndarray, groups: np.ndarray
-    ) -> dict:
+    def equalized_odds(self, y_true: np.ndarray, y_pred: np.ndarray, groups: np.ndarray) -> dict:
         """TPR and FPR should be equal across groups."""
         unique_groups = np.unique(groups)
         tpr_by_group = {}
@@ -65,9 +62,7 @@ class FairnessMetrics:
             "passed": (max(tpr_vals) - min(tpr_vals) < 0.10) if tpr_vals else True,
         }
 
-    def disparate_impact_ratio(
-        self, y_pred: np.ndarray, groups: np.ndarray, privileged_group: str
-    ) -> dict:
+    def disparate_impact_ratio(self, y_pred: np.ndarray, groups: np.ndarray, privileged_group: str) -> dict:
         """4/5 rule: approval ratio between groups must be >= 0.80."""
         favorable = y_pred == self.favorable_outcome
         unique_groups = np.unique(groups)

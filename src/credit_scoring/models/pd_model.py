@@ -19,21 +19,17 @@ class BasePDModel(ABC):
     """Abstract base class for Probability of Default models."""
 
     @abstractmethod
-    def fit(self, X: pd.DataFrame, y: np.ndarray) -> BasePDModel:
-        ...
+    def fit(self, X: pd.DataFrame, y: np.ndarray) -> BasePDModel: ...
 
     @abstractmethod
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray:
-        ...
+    def predict_proba(self, X: pd.DataFrame) -> np.ndarray: ...
 
     @abstractmethod
-    def save(self, path: str | Path) -> None:
-        ...
+    def save(self, path: str | Path) -> None: ...
 
     @classmethod
     @abstractmethod
-    def load(cls, path: str | Path) -> BasePDModel:
-        ...
+    def load(cls, path: str | Path) -> BasePDModel: ...
 
     def predict_pd(self, X: pd.DataFrame) -> np.ndarray:
         return self.predict_proba(X)[:, 1]
@@ -43,13 +39,21 @@ class LogisticPDModel(BasePDModel):
     """Logistic Regression baseline for PD estimation."""
 
     def __init__(self, C: float = 1.0, max_iter: int = 1000):
-        self.pipeline = Pipeline([
-            ("scaler", StandardScaler()),
-            ("clf", LogisticRegression(
-                C=C, max_iter=max_iter, class_weight="balanced",
-                solver="lbfgs", random_state=42,
-            )),
-        ])
+        self.pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "clf",
+                    LogisticRegression(
+                        C=C,
+                        max_iter=max_iter,
+                        class_weight="balanced",
+                        solver="lbfgs",
+                        random_state=42,
+                    ),
+                ),
+            ]
+        )
 
     def fit(self, X, y):
         self.pipeline.fit(X, y)

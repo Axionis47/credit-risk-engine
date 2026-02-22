@@ -73,11 +73,13 @@ class DriftDetector:
             else:
                 status = "alert"
 
-            results.append({
-                "feature": feature,
-                "psi": round(psi, 4),
-                "status": status,
-            })
+            results.append(
+                {
+                    "feature": feature,
+                    "psi": round(psi, 4),
+                    "status": status,
+                }
+            )
 
         return sorted(results, key=lambda x: x["psi"], reverse=True)
 

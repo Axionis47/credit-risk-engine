@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -15,7 +14,7 @@ from credit_scoring.data.validation import DataValidator
 from credit_scoring.features.engineering import FeatureEngineer
 from credit_scoring.features.store import FeatureStore
 from credit_scoring.models.ead_model import EADModel
-from credit_scoring.models.ensemble import CreditScoreCalculator, PDEnsemble
+from credit_scoring.models.ensemble import PDEnsemble
 from credit_scoring.models.evaluation import ModelEvaluator
 from credit_scoring.models.fraud_model import FraudModel
 from credit_scoring.models.lgd_model import TwoStageLGDModel
@@ -77,13 +76,17 @@ class TrainingPipeline:
 
         # Split: train (65%) / validation (15%) / test (20%)
         idx_trainval, idx_test = train_test_split(
-            idx, test_size=self.settings.model.test_size,
-            stratify=y_default, random_state=42,
+            idx,
+            test_size=self.settings.model.test_size,
+            stratify=y_default,
+            random_state=42,
         )
         relative_val = self.settings.model.validation_size / (1 - self.settings.model.test_size)
         idx_train, idx_val = train_test_split(
-            idx_trainval, test_size=relative_val,
-            stratify=y_default[idx_trainval], random_state=42,
+            idx_trainval,
+            test_size=relative_val,
+            stratify=y_default[idx_trainval],
+            random_state=42,
         )
 
         X_train, X_val, X_test = features.iloc[idx_train], features.iloc[idx_val], features.iloc[idx_test]
@@ -122,6 +125,7 @@ class TrainingPipeline:
             print("  Training TensorFlow Wide & Deep...")
             try:
                 from credit_scoring.models.deep_model import TensorFlowPDModel
+
                 tf_model = TensorFlowPDModel(
                     embedding_dim=self.settings.deep_model.embedding_dim,
                     dense_layers=self.settings.deep_model.dense_layers,
@@ -179,13 +183,19 @@ class TrainingPipeline:
             pd_preds = model.predict_pd(X_test)
             pd_eval = self.evaluator.evaluate_pd(y_test, pd_preds)
             results[f"pd_{name}"] = pd_eval
-            print(f"  {name}: AUC={pd_eval['auc_roc']:.4f}, KS={pd_eval['ks_statistic']:.4f}, Gini={pd_eval['gini']:.4f}")
+            auc = pd_eval["auc_roc"]
+            ks = pd_eval["ks_statistic"]
+            gini = pd_eval["gini"]
+            print(f"  {name}: AUC={auc:.4f}, KS={ks:.4f}, Gini={gini:.4f}")
 
         # Ensemble evaluation
         ensemble_preds = ensemble.predict_pd(X_test)
         ensemble_eval = self.evaluator.evaluate_pd(y_test, ensemble_preds)
         results["pd_ensemble"] = ensemble_eval
-        print(f"  ENSEMBLE: AUC={ensemble_eval['auc_roc']:.4f}, KS={ensemble_eval['ks_statistic']:.4f}, Gini={ensemble_eval['gini']:.4f}")
+        e_auc = ensemble_eval["auc_roc"]
+        e_ks = ensemble_eval["ks_statistic"]
+        e_gini = ensemble_eval["gini"]
+        print(f"  ENSEMBLE: AUC={e_auc:.4f}, KS={e_ks:.4f}, Gini={e_gini:.4f}")
 
         # LGD evaluation
         y_lgd_test = y_lgd[idx_test]
@@ -244,11 +254,13 @@ class TrainingPipeline:
         self._log_to_mlflow(results, ensemble.weights)
 
         # Report
-        report = self.evaluator.generate_report({
-            "pd": ensemble_eval,
-            "lgd": lgd_eval,
-            "ead": ead_eval,
-        })
+        report = self.evaluator.generate_report(
+            {
+                "pd": ensemble_eval,
+                "lgd": lgd_eval,
+                "ead": ead_eval,
+            }
+        )
         print(f"\n{report}")
 
         return results
@@ -257,6 +269,7 @@ class TrainingPipeline:
         """Optuna hyperparameter tuning for XGBoost."""
         try:
             import optuna
+
             optuna.logging.set_verbosity(optuna.logging.WARNING)
 
             def objective(trial):
@@ -271,9 +284,13 @@ class TrainingPipeline:
                     "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
                 }
                 from xgboost import XGBClassifier
+
                 model = XGBClassifier(
-                    **params, objective="binary:logistic",
-                    eval_metric="auc", random_state=42, verbosity=0,
+                    **params,
+                    objective="binary:logistic",
+                    eval_metric="auc",
+                    random_state=42,
+                    verbosity=0,
                 )
                 cv = StratifiedKFold(n_splits=3, shuffle=True, random_state=42)
                 scores = cross_val_score(model, X_train, y_train, cv=cv, scoring="roc_auc")

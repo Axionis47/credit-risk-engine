@@ -10,7 +10,6 @@ from credit_scoring.data.validation import DataValidator, ValidationResult
 
 
 class TestValidationResult:
-
     def test_starts_passing(self):
         result = ValidationResult(passed=True)
         assert result.passed is True
@@ -28,7 +27,6 @@ class TestValidationResult:
 
 
 class TestDataValidator:
-
     @pytest.fixture
     def validator(self):
         return DataValidator(max_null_fraction=0.05, min_rows=100)

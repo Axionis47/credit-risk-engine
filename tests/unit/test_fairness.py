@@ -9,7 +9,6 @@ from credit_scoring.explainability.fairness import BiasMonitor, FairnessMetrics
 
 
 class TestFairnessMetrics:
-
     @pytest.fixture
     def metrics(self):
         return FairnessMetrics(protected_attribute="group", favorable_outcome=0)
@@ -71,30 +70,21 @@ class TestFairnessMetrics:
 
 
 class TestBiasMonitor:
-
     def test_empty_history_no_warnings(self):
         monitor = BiasMonitor()
         assert monitor.check_degradation() == []
 
     def test_degradation_detected(self):
         monitor = BiasMonitor()
-        monitor.record_metrics(
-            {"demographic_parity": {"passed": True}}, "2024-01-01"
-        )
-        monitor.record_metrics(
-            {"demographic_parity": {"passed": False}}, "2024-02-01"
-        )
+        monitor.record_metrics({"demographic_parity": {"passed": True}}, "2024-01-01")
+        monitor.record_metrics({"demographic_parity": {"passed": False}}, "2024-02-01")
         warnings = monitor.check_degradation()
         assert len(warnings) > 0
         assert any("parity" in w.lower() for w in warnings)
 
     def test_no_degradation_when_passing(self):
         monitor = BiasMonitor()
-        monitor.record_metrics(
-            {"demographic_parity": {"passed": True}}, "2024-01-01"
-        )
-        monitor.record_metrics(
-            {"demographic_parity": {"passed": True}}, "2024-02-01"
-        )
+        monitor.record_metrics({"demographic_parity": {"passed": True}}, "2024-01-01")
+        monitor.record_metrics({"demographic_parity": {"passed": True}}, "2024-02-01")
         warnings = monitor.check_degradation()
         assert len(warnings) == 0

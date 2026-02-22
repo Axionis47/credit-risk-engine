@@ -15,9 +15,7 @@ class PerformanceMonitor:
         self.evaluator = ModelEvaluator()
         self.history: list[dict] = []
 
-    def record_batch(
-        self, y_true: np.ndarray, y_prob: np.ndarray, timestamp: str
-    ):
+    def record_batch(self, y_true: np.ndarray, y_prob: np.ndarray, timestamp: str):
         metrics = self.evaluator.evaluate_pd(y_true, y_prob)
         metrics["timestamp"] = timestamp
         self.history.append(metrics)

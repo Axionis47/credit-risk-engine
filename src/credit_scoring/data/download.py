@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import io
 import logging
 import zipfile
 from pathlib import Path
@@ -105,9 +104,7 @@ class DataDownloader:
         result = pd.DataFrame()
         result["borrower_id"] = [f"gmc-{i:06d}" for i in range(n)]
         result["age"] = df.get("age", self.rng.integers(22, 70, size=n)).astype(int)
-        result["annual_income"] = df.get(
-            "MonthlyIncome", pd.Series(self.rng.lognormal(10.5, 0.5, n))
-        ).fillna(4500) * 12
+        result["annual_income"] = df.get("MonthlyIncome", pd.Series(self.rng.lognormal(10.5, 0.5, n))).fillna(4500) * 12
         result["employment_length_years"] = self.rng.exponential(5.0, n).clip(0, 40).round(1)
 
         emp_types = ["employed", "self_employed", "unemployed", "retired"]
@@ -116,22 +113,26 @@ class DataDownloader:
         home_types = ["own", "mortgage", "rent"]
         result["home_ownership"] = self.rng.choice(home_types, n, p=[0.20, 0.40, 0.40])
 
-        result["existing_credit_lines"] = df.get(
-            "NumberOfOpenCreditLinesAndLoans",
-            pd.Series(self.rng.poisson(8, n)),
-        ).fillna(5).astype(int)
+        result["existing_credit_lines"] = (
+            df.get(
+                "NumberOfOpenCreditLinesAndLoans",
+                pd.Series(self.rng.poisson(8, n)),
+            )
+            .fillna(5)
+            .astype(int)
+        )
 
-        result["total_credit_limit"] = (
-            result["annual_income"] * self.rng.uniform(0.3, 1.5, n)
-        ).round(2)
-        result["current_credit_balance"] = (
-            result["total_credit_limit"] * self.rng.beta(2, 5, n)
-        ).round(2)
+        result["total_credit_limit"] = (result["annual_income"] * self.rng.uniform(0.3, 1.5, n)).round(2)
+        result["current_credit_balance"] = (result["total_credit_limit"] * self.rng.beta(2, 5, n)).round(2)
 
-        result["credit_utilization_ratio"] = df.get(
-            "RevolvingUtilizationOfUnsecuredLines",
-            pd.Series(result["current_credit_balance"] / result["total_credit_limit"].clip(1)),
-        ).fillna(0.5).clip(0, 2.0)
+        result["credit_utilization_ratio"] = (
+            df.get(
+                "RevolvingUtilizationOfUnsecuredLines",
+                pd.Series(result["current_credit_balance"] / result["total_credit_limit"].clip(1)),
+            )
+            .fillna(0.5)
+            .clip(0, 2.0)
+        )
 
         n30 = df.get("NumberOfTime30-59DaysPastDueNotWorse", pd.Series(np.zeros(n))).fillna(0)
         n60 = df.get("NumberOfTime60-89DaysPastDueNotWorse", pd.Series(np.zeros(n))).fillna(0)
@@ -144,13 +145,11 @@ class DataDownloader:
         months_since[has_delinq] = self.rng.integers(1, 60, size=has_delinq.sum())
         result["months_since_last_delinquency"] = months_since
 
-        result["debt_to_income_ratio"] = df.get(
-            "DebtRatio", pd.Series(self.rng.uniform(0.05, 0.8, n))
-        ).fillna(0.3).clip(0, 5.0)
+        result["debt_to_income_ratio"] = (
+            df.get("DebtRatio", pd.Series(self.rng.uniform(0.05, 0.8, n))).fillna(0.3).clip(0, 5.0)
+        )
 
-        result["requested_loan_amount"] = (
-            result["annual_income"] * self.rng.uniform(0.1, 0.5, n)
-        ).round(2)
+        result["requested_loan_amount"] = (result["annual_income"] * self.rng.uniform(0.1, 0.5, n)).round(2)
 
         purposes = [
             "debt_consolidation",
@@ -162,8 +161,26 @@ class DataDownloader:
         result["loan_purpose"] = self.rng.choice(purposes, n, p=[0.40, 0.15, 0.15, 0.10, 0.20])
 
         states = [
-            "CA", "TX", "FL", "NY", "PA", "IL", "OH", "GA", "NC", "MI",
-            "NJ", "VA", "WA", "AZ", "MA", "TN", "IN", "MO", "MD", "WI",
+            "CA",
+            "TX",
+            "FL",
+            "NY",
+            "PA",
+            "IL",
+            "OH",
+            "GA",
+            "NC",
+            "MI",
+            "NJ",
+            "VA",
+            "WA",
+            "AZ",
+            "MA",
+            "TN",
+            "IN",
+            "MO",
+            "MD",
+            "WI",
         ]
         result["state"] = self.rng.choice(states, n)
         result["account_age_months"] = self.rng.integers(6, 180, size=n)
@@ -171,9 +188,9 @@ class DataDownloader:
         result["device_type"] = self.rng.choice(["mobile", "desktop", "tablet"], n, p=[0.55, 0.35, 0.10])
 
         # Target variable
-        result["is_default"] = df.get(
-            "SeriousDlqin2yrs", pd.Series(self.rng.binomial(1, 0.08, n))
-        ).fillna(0).astype(int)
+        result["is_default"] = (
+            df.get("SeriousDlqin2yrs", pd.Series(self.rng.binomial(1, 0.08, n))).fillna(0).astype(int)
+        )
 
         # Fraud is synthetic
         result["is_fraud"] = self.rng.binomial(1, 0.015, n).astype(int)
@@ -209,26 +226,26 @@ class DataDownloader:
         result["employment_length_years"] = emp_years.values.flatten().clip(0, 40)
         result["employment_type"] = self.rng.choice(
             ["employed", "self_employed", "unemployed", "retired"],
-            n, p=[0.70, 0.15, 0.05, 0.10],
+            n,
+            p=[0.70, 0.15, 0.05, 0.10],
         )
 
         home_map = {"MORTGAGE": "mortgage", "RENT": "rent", "OWN": "own"}
-        result["home_ownership"] = (
-            df.get("home_ownership", pd.Series(dtype=str))
-            .map(home_map)
-            .fillna("rent")
-        )
+        result["home_ownership"] = df.get("home_ownership", pd.Series(dtype=str)).map(home_map).fillna("rent")
 
         result["existing_credit_lines"] = df.get("open_acc", pd.Series(self.rng.poisson(8, n))).fillna(8).astype(int)
-        result["total_credit_limit"] = df.get("total_rev_hi_lim", pd.Series(self.rng.lognormal(10, 0.8, n))).fillna(30000)
+        result["total_credit_limit"] = df.get("total_rev_hi_lim", pd.Series(self.rng.lognormal(10, 0.8, n))).fillna(
+            30000
+        )
         result["current_credit_balance"] = df.get("revol_bal", pd.Series(self.rng.lognormal(9, 1.0, n))).fillna(10000)
-        result["credit_utilization_ratio"] = (
-            df.get("revol_util", pd.Series(dtype=float)).fillna(50.0) / 100.0
-        ).clip(0, 2.0)
+        result["credit_utilization_ratio"] = (df.get("revol_util", pd.Series(dtype=float)).fillna(50.0) / 100.0).clip(
+            0, 2.0
+        )
 
         result["months_since_last_delinquency"] = df.get("mths_since_last_delinq", pd.Series(np.nan))
         result["number_of_delinquencies"] = df.get("delinq_2yrs", pd.Series(np.zeros(n))).fillna(0).astype(int)
-        result["debt_to_income_ratio"] = (df.get("dti", pd.Series(self.rng.uniform(5, 30, n))).fillna(15.0) / 100.0).clip(0, 5.0)
+        dti_raw = df.get("dti", pd.Series(self.rng.uniform(5, 30, n))).fillna(15.0)
+        result["debt_to_income_ratio"] = (dti_raw / 100.0).clip(0, 5.0)
         result["requested_loan_amount"] = df.get("loan_amnt", pd.Series(self.rng.lognormal(9.5, 0.8, n))).fillna(15000)
 
         purpose_map = {
@@ -238,11 +255,7 @@ class DataDownloader:
             "small_business": "business",
             "educational": "education",
         }
-        result["loan_purpose"] = (
-            df.get("purpose", pd.Series(dtype=str))
-            .map(purpose_map)
-            .fillna("personal")
-        )
+        result["loan_purpose"] = df.get("purpose", pd.Series(dtype=str)).map(purpose_map).fillna("personal")
 
         result["state"] = df.get("addr_state", pd.Series(self.rng.choice(["CA", "TX", "FL", "NY"], n)))
         result["account_age_months"] = self.rng.integers(6, 180, size=n)
@@ -250,9 +263,7 @@ class DataDownloader:
         result["device_type"] = self.rng.choice(["mobile", "desktop", "tablet"], n, p=[0.55, 0.35, 0.10])
 
         status_default = {"Charged Off", "Default", "Late (31-120 days)"}
-        result["is_default"] = (
-            df.get("loan_status", pd.Series(dtype=str)).isin(status_default).astype(int)
-        )
+        result["is_default"] = df.get("loan_status", pd.Series(dtype=str)).isin(status_default).astype(int)
         result["is_fraud"] = self.rng.binomial(1, 0.015, n).astype(int)
 
         lgd = np.zeros(n)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,8 +18,8 @@ class ScoringRequest(BaseModel):
     existing_credit_lines: int = Field(ge=0)
     total_credit_limit: float = Field(ge=0)
     current_credit_balance: float = Field(ge=0)
-    credit_utilization_ratio: Optional[float] = None
-    months_since_last_delinquency: Optional[int] = None
+    credit_utilization_ratio: float | None = None
+    months_since_last_delinquency: int | None = None
     number_of_delinquencies: int = Field(ge=0)
     debt_to_income_ratio: float = Field(ge=0)
     requested_loan_amount: float = Field(gt=0)
@@ -42,7 +41,7 @@ class ScoringResponse(BaseModel):
     fraud_score: float
     fraud_flag: bool
     decision: str
-    adverse_action_reasons: Optional[list[dict]] = None
+    adverse_action_reasons: list[dict] | None = None
     scored_at: datetime
     model_version: str
 

@@ -48,10 +48,7 @@ class SHAPExplainer:
         )
 
         return {
-            "feature_importance": [
-                {"feature": name, "importance": float(imp)}
-                for name, imp in importance
-            ],
+            "feature_importance": [{"feature": name, "importance": float(imp)} for name, imp in importance],
         }
 
     def explain_local(self, X_single: pd.DataFrame) -> dict:
@@ -67,12 +64,14 @@ class SHAPExplainer:
 
         contributions = []
         for name, value, shap_val in zip(feature_names, feature_values, sv):
-            contributions.append({
-                "feature": name,
-                "value": float(value),
-                "shap_value": float(shap_val),
-                "direction": "increases_risk" if shap_val > 0 else "decreases_risk",
-            })
+            contributions.append(
+                {
+                    "feature": name,
+                    "value": float(value),
+                    "shap_value": float(shap_val),
+                    "direction": "increases_risk" if shap_val > 0 else "decreases_risk",
+                }
+            )
 
         contributions.sort(key=lambda x: abs(x["shap_value"]), reverse=True)
 

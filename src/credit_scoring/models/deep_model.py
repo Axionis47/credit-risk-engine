@@ -20,13 +20,28 @@ class TensorFlowPDModel(BasePDModel):
     """
 
     NUMERIC_FEATURES = [
-        "age", "log_annual_income", "employment_length_years", "account_age_months",
-        "profile_completeness_score", "credit_utilization_ratio", "existing_credit_lines",
-        "number_of_delinquencies", "debt_to_income_ratio", "loan_to_income_ratio",
-        "balance_to_income_ratio", "utilization_x_dti", "income_stability_proxy",
-        "txn_count_30d", "txn_amount_sum_30d", "txn_amount_mean_30d",
-        "decline_rate_30d", "on_time_payment_rate", "avg_days_past_due",
-        "missed_payment_count", "spend_trend_6m", "spend_volatility_6m",
+        "age",
+        "log_annual_income",
+        "employment_length_years",
+        "account_age_months",
+        "profile_completeness_score",
+        "credit_utilization_ratio",
+        "existing_credit_lines",
+        "number_of_delinquencies",
+        "debt_to_income_ratio",
+        "loan_to_income_ratio",
+        "balance_to_income_ratio",
+        "utilization_x_dti",
+        "income_stability_proxy",
+        "txn_count_30d",
+        "txn_amount_sum_30d",
+        "txn_amount_mean_30d",
+        "decline_rate_30d",
+        "on_time_payment_rate",
+        "avg_days_past_due",
+        "missed_payment_count",
+        "spend_trend_6m",
+        "spend_volatility_6m",
     ]
 
     WIDE_CROSS_FEATURES = [
@@ -64,8 +79,7 @@ class TensorFlowPDModel(BasePDModel):
         # Deep branch
         x = tf.keras.layers.BatchNormalization()(inputs)
         for units in self.dense_layers:
-            x = tf.keras.layers.Dense(units, activation="relu",
-                                       kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
+            x = tf.keras.layers.Dense(units, activation="relu", kernel_regularizer=tf.keras.regularizers.l2(0.001))(x)
             x = tf.keras.layers.BatchNormalization()(x)
             x = tf.keras.layers.Dropout(self.dropout_rate)(x)
 
@@ -90,7 +104,8 @@ class TensorFlowPDModel(BasePDModel):
     def _prepare_features(self, X: pd.DataFrame) -> np.ndarray:
         """Select and order features for the model."""
         if not self._feature_columns:
-            self._feature_columns = [c for c in X.columns if X[c].dtype in [np.float64, np.float32, np.int64, np.int32, float, int]]
+            numeric_types = [np.float64, np.float32, np.int64, np.int32, float, int]
+            self._feature_columns = [c for c in X.columns if X[c].dtype in numeric_types]
         available = [c for c in self._feature_columns if c in X.columns]
         arr = X[available].values.astype(np.float32)
         arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
@@ -111,26 +126,33 @@ class TensorFlowPDModel(BasePDModel):
 
         class PrintProgress(tf.keras.callbacks.Callback):
             """Flush-safe progress callback for non-interactive environments."""
+
             def on_epoch_end(self, epoch, logs=None):
                 logs = logs or {}
                 auc = logs.get("auc", 0)
                 val_auc = logs.get("val_auc", 0)
                 loss = logs.get("loss", 0)
-                print(f"  Epoch {epoch+1}: loss={loss:.4f}, auc={auc:.4f}, val_auc={val_auc:.4f}", flush=True)
+                print(f"  Epoch {epoch + 1}: loss={loss:.4f}, auc={auc:.4f}, val_auc={val_auc:.4f}", flush=True)
 
         callbacks = [
             tf.keras.callbacks.EarlyStopping(
-                monitor="val_auc", patience=self.early_stopping_patience,
-                mode="max", restore_best_weights=True,
+                monitor="val_auc",
+                patience=self.early_stopping_patience,
+                mode="max",
+                restore_best_weights=True,
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
-                monitor="val_auc", factor=0.5, patience=5, mode="max",
+                monitor="val_auc",
+                factor=0.5,
+                patience=5,
+                mode="max",
             ),
             PrintProgress(),
         ]
 
         self.model.fit(
-            X_arr, y,
+            X_arr,
+            y,
             validation_split=0.15,
             batch_size=self.batch_size,
             epochs=self.epochs,
@@ -146,7 +168,6 @@ class TensorFlowPDModel(BasePDModel):
 
     def _calibrate_temperature(self, X: np.ndarray, y: np.ndarray):
         """Learn temperature parameter for probability calibration."""
-        import tensorflow as tf
         from scipy.optimize import minimize_scalar
 
         logits = self.model.predict(X, verbose=0).flatten()
@@ -191,6 +212,7 @@ class TensorFlowPDModel(BasePDModel):
         self.model.save(path / "saved_model")
         # Save metadata
         import json
+
         meta = {
             "temperature": self.temperature,
             "feature_columns": self._feature_columns,
@@ -203,6 +225,7 @@ class TensorFlowPDModel(BasePDModel):
     @classmethod
     def load(cls, path: str | Path) -> TensorFlowPDModel:
         import json
+
         import tensorflow as tf
 
         path = Path(path)

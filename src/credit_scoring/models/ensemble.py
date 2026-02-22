@@ -31,6 +31,7 @@ class PDEnsemble:
             w = w / w.sum()
             combined = pred_matrix @ w
             from sklearn.metrics import roc_auc_score
+
             try:
                 return -roc_auc_score(y_val, combined)
             except ValueError:
@@ -116,17 +117,19 @@ class CreditScoreCalculator:
             else:
                 decisions.append("approved")
 
-        return pd.DataFrame({
-            "pd": pd_scores,
-            "lgd": lgd_scores,
-            "ead": ead_values,
-            "expected_loss": expected_loss,
-            "credit_score": credit_scores,
-            "risk_tier": risk_tiers,
-            "fraud_score": fraud_scores,
-            "fraud_flag": fraud_flags,
-            "decision": decisions,
-        })
+        return pd.DataFrame(
+            {
+                "pd": pd_scores,
+                "lgd": lgd_scores,
+                "ead": ead_values,
+                "expected_loss": expected_loss,
+                "credit_score": credit_scores,
+                "risk_tier": risk_tiers,
+                "fraud_score": fraud_scores,
+                "fraud_flag": fraud_flags,
+                "decision": decisions,
+            }
+        )
 
     def score_single(self, X: pd.DataFrame) -> dict:
         """Score a single application. Returns a dict."""

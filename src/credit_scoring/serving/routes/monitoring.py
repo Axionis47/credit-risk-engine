@@ -14,10 +14,7 @@ router = APIRouter(tags=["monitoring"])
 @router.get("/health", response_model=HealthResponse)
 async def health_check(req: Request):
     """Check system health."""
-    models_loaded = (
-        req.app.state.scorer is not None
-        and req.app.state.scorer.pd_model is not None
-    )
+    models_loaded = req.app.state.scorer is not None and req.app.state.scorer.pd_model is not None
 
     redis_ok = False
     if req.app.state.redis is not None:

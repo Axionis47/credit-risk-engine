@@ -52,9 +52,7 @@ class AdverseActionGenerator:
     def __init__(self, shap_explainer: SHAPExplainer):
         self.explainer = shap_explainer
 
-    def generate_reasons(
-        self, X_single: pd.DataFrame, max_reasons: int = 4
-    ) -> list[AdverseActionReason]:
+    def generate_reasons(self, X_single: pd.DataFrame, max_reasons: int = 4) -> list[AdverseActionReason]:
         """Generate up to max_reasons adverse action codes for a declined application."""
         explanation = self.explainer.explain_local(X_single)
 
@@ -70,12 +68,14 @@ class AdverseActionGenerator:
             # Try exact match
             if feature in ADVERSE_ACTION_CODE_MAP:
                 code, desc = ADVERSE_ACTION_CODE_MAP[feature]
-                reasons.append(AdverseActionReason(
-                    code=code,
-                    description=desc,
-                    feature=feature,
-                    impact_score=abs(contrib["shap_value"]),
-                ))
+                reasons.append(
+                    AdverseActionReason(
+                        code=code,
+                        description=desc,
+                        feature=feature,
+                        impact_score=abs(contrib["shap_value"]),
+                    )
+                )
 
             if len(reasons) >= max_reasons:
                 break
@@ -84,7 +84,4 @@ class AdverseActionGenerator:
 
     def format_for_notice(self, reasons: list[AdverseActionReason]) -> list[dict]:
         """Format reasons for regulatory adverse action notice."""
-        return [
-            {"code": r.code, "reason": r.description}
-            for r in reasons
-        ]
+        return [{"code": r.code, "reason": r.description} for r in reasons]

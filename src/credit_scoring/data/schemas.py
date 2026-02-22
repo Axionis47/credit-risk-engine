@@ -3,26 +3,25 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class EmploymentType(str, Enum):
+class EmploymentType(StrEnum):
     EMPLOYED = "employed"
     SELF_EMPLOYED = "self_employed"
     UNEMPLOYED = "unemployed"
     RETIRED = "retired"
 
 
-class HomeOwnership(str, Enum):
+class HomeOwnership(StrEnum):
     OWN = "own"
     MORTGAGE = "mortgage"
     RENT = "rent"
 
 
-class LoanPurpose(str, Enum):
+class LoanPurpose(StrEnum):
     DEBT_CONSOLIDATION = "debt_consolidation"
     HOME_IMPROVEMENT = "home_improvement"
     BUSINESS = "business"
@@ -41,7 +40,7 @@ class BorrowerProfile(BaseModel):
     total_credit_limit: float = Field(ge=0)
     current_credit_balance: float = Field(ge=0)
     credit_utilization_ratio: float = Field(ge=0.0, le=2.0)
-    months_since_last_delinquency: Optional[int] = None
+    months_since_last_delinquency: int | None = None
     number_of_delinquencies: int = Field(ge=0)
     debt_to_income_ratio: float = Field(ge=0)
     requested_loan_amount: float = Field(gt=0)

@@ -7,7 +7,6 @@ transaction histories, and payment records.
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -29,17 +28,19 @@ class BorrowerProfileGenerator:
         n = self.n
 
         # Gaussian copula: correlated normals -> transform to target marginals
-        corr = np.array([
-            # age, income, emp_len, credit_lines, limit, balance, delinq, dti
-            [1.00, 0.40, 0.50, 0.30, 0.35, 0.20, -0.10, -0.05],
-            [0.40, 1.00, 0.35, 0.25, 0.60, 0.30, -0.20, -0.35],
-            [0.50, 0.35, 1.00, 0.15, 0.20, 0.10, -0.15, -0.10],
-            [0.30, 0.25, 0.15, 1.00, 0.40, 0.35, 0.10, 0.05],
-            [0.35, 0.60, 0.20, 0.40, 1.00, 0.50, -0.10, -0.15],
-            [0.20, 0.30, 0.10, 0.35, 0.50, 1.00, 0.15, 0.20],
-            [-0.10, -0.20, -0.15, 0.10, -0.10, 0.15, 1.00, 0.30],
-            [-0.05, -0.35, -0.10, 0.05, -0.15, 0.20, 0.30, 1.00],
-        ])
+        corr = np.array(
+            [
+                # age, income, emp_len, credit_lines, limit, balance, delinq, dti
+                [1.00, 0.40, 0.50, 0.30, 0.35, 0.20, -0.10, -0.05],
+                [0.40, 1.00, 0.35, 0.25, 0.60, 0.30, -0.20, -0.35],
+                [0.50, 0.35, 1.00, 0.15, 0.20, 0.10, -0.15, -0.10],
+                [0.30, 0.25, 0.15, 1.00, 0.40, 0.35, 0.10, 0.05],
+                [0.35, 0.60, 0.20, 0.40, 1.00, 0.50, -0.10, -0.15],
+                [0.20, 0.30, 0.10, 0.35, 0.50, 1.00, 0.15, 0.20],
+                [-0.10, -0.20, -0.15, 0.10, -0.10, 0.15, 1.00, 0.30],
+                [-0.05, -0.35, -0.10, 0.05, -0.15, 0.20, 0.30, 1.00],
+            ]
+        )
 
         z = self.rng.multivariate_normal(np.zeros(8), corr, size=n)
         u = stats.norm.cdf(z)  # uniform marginals
@@ -54,11 +55,15 @@ class BorrowerProfileGenerator:
         number_of_delinquencies = stats.poisson.ppf(u[:, 6], mu=0.5).clip(0, 20).astype(int)
         debt_to_income_ratio = stats.beta.ppf(u[:, 7], 2, 5).clip(0.01, 5.0).round(4)
 
-        credit_utilization_ratio = np.where(
-            total_credit_limit > 0,
-            current_credit_balance / total_credit_limit,
-            0.0,
-        ).clip(0, 2.0).round(4)
+        credit_utilization_ratio = (
+            np.where(
+                total_credit_limit > 0,
+                current_credit_balance / total_credit_limit,
+                0.0,
+            )
+            .clip(0, 2.0)
+            .round(4)
+        )
 
         # Categorical features
         emp_types = ["employed", "self_employed", "unemployed", "retired"]
@@ -66,22 +71,40 @@ class BorrowerProfileGenerator:
 
         home_types = ["own", "mortgage", "rent"]
         income_rank = np.argsort(np.argsort(annual_income)) / n
-        home_probs = np.column_stack([
-            0.10 + 0.20 * income_rank,
-            0.30 + 0.20 * income_rank,
-            0.60 - 0.40 * income_rank,
-        ])
+        home_probs = np.column_stack(
+            [
+                0.10 + 0.20 * income_rank,
+                0.30 + 0.20 * income_rank,
+                0.60 - 0.40 * income_rank,
+            ]
+        )
         home_probs = home_probs / home_probs.sum(axis=1, keepdims=True)
-        home_ownership = np.array([
-            self.rng.choice(home_types, p=p) for p in home_probs
-        ])
+        home_ownership = np.array([self.rng.choice(home_types, p=p) for p in home_probs])
 
         purposes = ["debt_consolidation", "home_improvement", "business", "education", "personal"]
         loan_purpose = self.rng.choice(purposes, n, p=[0.40, 0.15, 0.15, 0.10, 0.20])
 
         states = [
-            "CA", "TX", "FL", "NY", "PA", "IL", "OH", "GA", "NC", "MI",
-            "NJ", "VA", "WA", "AZ", "MA", "TN", "IN", "MO", "MD", "WI",
+            "CA",
+            "TX",
+            "FL",
+            "NY",
+            "PA",
+            "IL",
+            "OH",
+            "GA",
+            "NC",
+            "MI",
+            "NJ",
+            "VA",
+            "WA",
+            "AZ",
+            "MA",
+            "TN",
+            "IN",
+            "MO",
+            "MD",
+            "WI",
         ]
         state = self.rng.choice(states, n)
 
@@ -92,12 +115,12 @@ class BorrowerProfileGenerator:
 
         has_delinq = number_of_delinquencies > 0
         months_since_last_delinquency = np.full(n, np.nan)
-        months_since_last_delinquency[has_delinq] = self.rng.integers(
-            1, 60, size=has_delinq.sum()
-        )
+        months_since_last_delinquency[has_delinq] = self.rng.integers(1, 60, size=has_delinq.sum())
 
         # Default indicator from latent logistic model
-        standardize = lambda x: (x - x.mean()) / (x.std() + 1e-8)
+        def standardize(x):
+            return (x - x.mean()) / (x.std() + 1e-8)
+
         logit = (
             -3.5
             + 0.8 * standardize(credit_utilization_ratio)
@@ -140,31 +163,33 @@ class BorrowerProfileGenerator:
 
         borrower_ids = [f"syn-{uuid.uuid4().hex[:8]}" for _ in range(n)]
 
-        return pd.DataFrame({
-            "borrower_id": borrower_ids,
-            "age": age,
-            "annual_income": annual_income,
-            "employment_length_years": employment_length,
-            "employment_type": employment_type,
-            "home_ownership": home_ownership,
-            "existing_credit_lines": existing_credit_lines,
-            "total_credit_limit": total_credit_limit,
-            "current_credit_balance": current_credit_balance,
-            "credit_utilization_ratio": credit_utilization_ratio,
-            "months_since_last_delinquency": months_since_last_delinquency,
-            "number_of_delinquencies": number_of_delinquencies,
-            "debt_to_income_ratio": debt_to_income_ratio,
-            "requested_loan_amount": requested_loan_amount,
-            "loan_purpose": loan_purpose,
-            "state": state,
-            "account_age_months": account_age_months,
-            "profile_completeness_score": profile_completeness_score,
-            "device_type": device_type,
-            "is_default": is_default,
-            "is_fraud": is_fraud,
-            "lgd_value": lgd_value,
-            "ead_value": ead_value,
-        })
+        return pd.DataFrame(
+            {
+                "borrower_id": borrower_ids,
+                "age": age,
+                "annual_income": annual_income,
+                "employment_length_years": employment_length,
+                "employment_type": employment_type,
+                "home_ownership": home_ownership,
+                "existing_credit_lines": existing_credit_lines,
+                "total_credit_limit": total_credit_limit,
+                "current_credit_balance": current_credit_balance,
+                "credit_utilization_ratio": credit_utilization_ratio,
+                "months_since_last_delinquency": months_since_last_delinquency,
+                "number_of_delinquencies": number_of_delinquencies,
+                "debt_to_income_ratio": debt_to_income_ratio,
+                "requested_loan_amount": requested_loan_amount,
+                "loan_purpose": loan_purpose,
+                "state": state,
+                "account_age_months": account_age_months,
+                "profile_completeness_score": profile_completeness_score,
+                "device_type": device_type,
+                "is_default": is_default,
+                "is_fraud": is_fraud,
+                "lgd_value": lgd_value,
+                "ead_value": ead_value,
+            }
+        )
 
 
 class TransactionGenerator:
@@ -180,7 +205,15 @@ class TransactionGenerator:
         all_txns = []
         categories = ["grocery", "restaurant", "gas", "online", "travel", "utilities", "entertainment"]
         cat_probs = [0.25, 0.15, 0.10, 0.25, 0.05, 0.10, 0.10]
-        cat_avg_amounts = {"grocery": 45, "restaurant": 35, "gas": 40, "online": 60, "travel": 200, "utilities": 80, "entertainment": 30}
+        cat_avg_amounts = {
+            "grocery": 45,
+            "restaurant": 35,
+            "gas": 40,
+            "online": 60,
+            "travel": 200,
+            "utilities": 80,
+            "entertainment": 30,
+        }
         channels = ["online", "in_store", "mobile"]
 
         n_borrowers = len(self.borrowers)
@@ -224,17 +257,19 @@ class TransactionGenerator:
                     is_declined = self.rng.random() < (0.08 if fraud_burst else 0.02)
                     is_fraudulent = fraud_burst and self.rng.random() < 0.3
 
-                    all_txns.append({
-                        "transaction_id": f"txn-{uuid.uuid4().hex[:10]}",
-                        "borrower_id": row["borrower_id"],
-                        "timestamp": ts,
-                        "amount": round(amount, 2),
-                        "merchant_category": cat,
-                        "is_international": is_intl,
-                        "channel": channel,
-                        "is_declined": is_declined,
-                        "is_fraudulent": is_fraudulent,
-                    })
+                    all_txns.append(
+                        {
+                            "transaction_id": f"txn-{uuid.uuid4().hex[:10]}",
+                            "borrower_id": row["borrower_id"],
+                            "timestamp": ts,
+                            "amount": round(amount, 2),
+                            "merchant_category": cat,
+                            "is_international": is_intl,
+                            "channel": channel,
+                            "is_declined": is_declined,
+                            "is_fraudulent": is_fraudulent,
+                        }
+                    )
 
             # Print progress every 5000 borrowers
             if (idx + 1) % 5000 == 0:
@@ -290,15 +325,17 @@ class PaymentHistoryGenerator:
                 else:
                     status = "on_time"
 
-                all_payments.append({
-                    "borrower_id": row["borrower_id"],
-                    "payment_date": payment_date,
-                    "due_date": due_date,
-                    "amount_due": amount_due,
-                    "amount_paid": amount_paid,
-                    "days_past_due": days_late,
-                    "payment_status": status,
-                })
+                all_payments.append(
+                    {
+                        "borrower_id": row["borrower_id"],
+                        "payment_date": payment_date,
+                        "due_date": due_date,
+                        "amount_due": amount_due,
+                        "amount_paid": amount_paid,
+                        "days_past_due": days_late,
+                        "payment_status": status,
+                    }
+                )
 
         return pd.DataFrame(all_payments)
 
@@ -327,9 +364,7 @@ def generate_full_dataset(settings: DataSettings) -> dict[str, pd.DataFrame]:
     }
 
 
-def generate_enrichment_for_existing(
-    borrowers: pd.DataFrame, settings: DataSettings
-) -> dict[str, pd.DataFrame]:
+def generate_enrichment_for_existing(borrowers: pd.DataFrame, settings: DataSettings) -> dict[str, pd.DataFrame]:
     """Generate only transactions and payments for existing borrower data (e.g., from Kaggle)."""
     print("Generating transaction histories for existing borrowers...")
     txn_gen = TransactionGenerator(borrowers, settings)

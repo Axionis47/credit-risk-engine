@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 
 import structlog
 
@@ -28,9 +27,7 @@ def setup_logging(level: str = "INFO", json_output: bool = True):
 
     structlog.configure(
         processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(
-            getattr(logging, level.upper(), logging.INFO)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(getattr(logging, level.upper(), logging.INFO)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
     )

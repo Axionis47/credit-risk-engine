@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import numpy as np
 import pandas as pd
@@ -102,7 +102,7 @@ class ShadowModeRouter:
                     champion_latency_ms=round(champion_ms, 2),
                     challenger_latency_ms=round(challenger_ms, 2),
                     agreement=champion_result["decision"] == challenger_result["decision"],
-                    timestamp=datetime.now(timezone.utc),
+                    timestamp=datetime.now(UTC),
                 )
                 self.shadow_log.append(shadow)
 
@@ -136,12 +136,10 @@ class ShadowModeRouter:
         # Decision disagreement breakdown
         disagreements = [s for s in self.shadow_log if not s.agreement]
         upgrade_count = sum(
-            1 for s in disagreements
-            if s.challenger_decision == "approved" and s.champion_decision != "approved"
+            1 for s in disagreements if s.challenger_decision == "approved" and s.champion_decision != "approved"
         )
         downgrade_count = sum(
-            1 for s in disagreements
-            if s.challenger_decision == "declined" and s.champion_decision != "declined"
+            1 for s in disagreements if s.challenger_decision == "declined" and s.champion_decision != "declined"
         )
 
         return {

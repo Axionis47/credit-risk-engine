@@ -16,12 +16,10 @@ class BaseLGDModel(ABC):
     """Abstract base for LGD models. Predicts values in [0, 1]."""
 
     @abstractmethod
-    def fit(self, X: pd.DataFrame, y: np.ndarray) -> BaseLGDModel:
-        ...
+    def fit(self, X: pd.DataFrame, y: np.ndarray) -> BaseLGDModel: ...
 
     @abstractmethod
-    def predict(self, X: pd.DataFrame) -> np.ndarray:
-        ...
+    def predict(self, X: pd.DataFrame) -> np.ndarray: ...
 
     def save(self, path: str | Path) -> None:
         joblib.dump(self, path)
@@ -42,7 +40,9 @@ class TwoStageLGDModel(BaseLGDModel):
 
     def __init__(self):
         self.stage1 = LogisticRegression(
-            class_weight="balanced", max_iter=1000, random_state=42,
+            class_weight="balanced",
+            max_iter=1000,
+            random_state=42,
         )
         self.stage2 = XGBRegressor(
             objective="reg:squarederror",

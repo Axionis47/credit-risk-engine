@@ -30,9 +30,7 @@ class DataSettings(BaseSettings):
     avg_transactions_per_month: int = 15
     random_seed: int = 42
     output_dir: Path = PROJECT_ROOT / "data"
-    kaggle_lending_club_url: str = (
-        "https://www.kaggle.com/datasets/adarshsng/lending-club-loan-data-csv"
-    )
+    kaggle_lending_club_url: str = "https://www.kaggle.com/datasets/adarshsng/lending-club-loan-data-csv"
     kaggle_give_me_credit_url: str = "https://www.kaggle.com/c/GiveMeSomeCredit"
 
 

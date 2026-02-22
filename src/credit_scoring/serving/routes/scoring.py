@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request
 
@@ -57,7 +57,7 @@ async def score_application(request: ScoringRequest, req: Request):
         fraud_flag=bool(result["fraud_flag"]),
         decision=result["decision"],
         adverse_action_reasons=adverse_reasons,
-        scored_at=datetime.now(timezone.utc),
+        scored_at=datetime.now(UTC),
         model_version="1.0.0",
     )
 
@@ -77,21 +77,23 @@ async def batch_score(request: BatchScoringRequest, req: Request):
             reasons = req.app.state.adverse_action.generate_reasons(features)
             adverse_reasons = req.app.state.adverse_action.format_for_notice(reasons)
 
-        results.append(ScoringResponse(
-            application_id=app_request.application_id,
-            credit_score=int(result["credit_score"]),
-            risk_tier=result["risk_tier"],
-            probability_of_default=float(result["pd"]),
-            loss_given_default=float(result["lgd"]),
-            exposure_at_default=float(result["ead"]),
-            expected_loss=float(result["expected_loss"]),
-            fraud_score=float(result["fraud_score"]),
-            fraud_flag=bool(result["fraud_flag"]),
-            decision=result["decision"],
-            adverse_action_reasons=adverse_reasons,
-            scored_at=datetime.now(timezone.utc),
-            model_version="1.0.0",
-        ))
+        results.append(
+            ScoringResponse(
+                application_id=app_request.application_id,
+                credit_score=int(result["credit_score"]),
+                risk_tier=result["risk_tier"],
+                probability_of_default=float(result["pd"]),
+                loss_given_default=float(result["lgd"]),
+                exposure_at_default=float(result["ead"]),
+                expected_loss=float(result["expected_loss"]),
+                fraud_score=float(result["fraud_score"]),
+                fraud_flag=bool(result["fraud_flag"]),
+                decision=result["decision"],
+                adverse_action_reasons=adverse_reasons,
+                scored_at=datetime.now(UTC),
+                model_version="1.0.0",
+            )
+        )
 
     latency_ms = (time.monotonic() - start) * 1000
 
