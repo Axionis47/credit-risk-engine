@@ -1,0 +1,53 @@
+{
+  "split": {
+    "scheme": "65/15/20 stratified, random_state=42 (matches training.py)",
+    "n_total": 30000,
+    "n_validation": 4500,
+    "n_test": 6000,
+    "test_default_rate": 0.0652
+  },
+  "validation": {
+    "logistic": {
+      "auc_roc": 0.8243,
+      "ks_statistic": 0.5314,
+      "gini": 0.6485
+    },
+    "xgboost": {
+      "auc_roc": 0.8358,
+      "ks_statistic": 0.5418,
+      "gini": 0.6717
+    },
+    "lightgbm": {
+      "auc_roc": 0.8017,
+      "ks_statistic": 0.4576,
+      "gini": 0.6033
+    },
+    "ensemble": {
+      "auc_roc": 0.836,
+      "ks_statistic": 0.5437,
+      "gini": 0.672
+    }
+  },
+  "test": {
+    "logistic": {
+      "auc_roc": 0.8642,
+      "ks_statistic": 0.5742,
+      "gini": 0.7283
+    },
+    "xgboost": {
+      "auc_roc": 0.8795,
+      "ks_statistic": 0.6196,
+      "gini": 0.7591
+    },
+    "lightgbm": {
+      "auc_roc": 0.8332,
+      "ks_statistic": 0.5341,
+      "gini": 0.6664
+    },
+    "ensemble": {
+      "auc_roc": 0.8794,
+      "ks_statistic": 0.6168,
+      "gini": 0.7588
+    }
+  }
+}
